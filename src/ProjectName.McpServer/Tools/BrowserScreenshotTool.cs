@@ -33,6 +33,12 @@ public class BrowserScreenshotTool : McpToolBase<BrowserScreenshotInput, Browser
 
         byte[] screenshot;
 
+        // FIX: Playwright throws an error if Quality is set for PNG.
+        // We must ensure Quality is null if format is png.
+        int? actualQuality = input.Format.Equals("png", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : input.Quality;
+
         if (!string.IsNullOrEmpty(input.Selector))
         {
             // Screenshot of specific element
@@ -45,7 +51,7 @@ public class BrowserScreenshotTool : McpToolBase<BrowserScreenshotInput, Browser
             screenshot = await element.ScreenshotAsync(new()
             {
                 Type = input.Format == "png" ? Microsoft.Playwright.ScreenshotType.Png : Microsoft.Playwright.ScreenshotType.Jpeg,
-                Quality = input.Quality
+                Quality = actualQuality
             });
         }
         else
@@ -55,7 +61,7 @@ public class BrowserScreenshotTool : McpToolBase<BrowserScreenshotInput, Browser
             {
                 FullPage = input.FullPage,
                 Type = input.Format == "png" ? Microsoft.Playwright.ScreenshotType.Png : Microsoft.Playwright.ScreenshotType.Jpeg,
-                Quality = input.Quality
+                Quality = actualQuality
             });
         }
 

@@ -1,8 +1,8 @@
 using Microsoft.Extensions.AI;
 using Microsoft.OpenApi;
 using ProjectName.Application;
+using ProjectName.Application.Interfaces;
 using ProjectName.Core.Entities;
-using ProjectName.Core.Interfaces;
 using ProjectName.Infrastructure.Data;
 using ProjectName.Infrastructure.MCP;
 using ProjectName.Infrastructure.Services;

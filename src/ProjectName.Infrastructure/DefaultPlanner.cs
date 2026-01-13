@@ -1,5 +1,5 @@
-﻿using System.Text.Json;
-using ProjectName.Core.Interfaces;
+﻿using ProjectName.Application.Interfaces;
+using System.Text.Json;
 
 namespace ProjectName.Infrastructure;
 

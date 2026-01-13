@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
-namespace ProjectName.Core.Interfaces;
+namespace ProjectName.Application.Interfaces;
 
 /// <summary>
 /// The contract for Phase P (Plan) and Phase C (Check).

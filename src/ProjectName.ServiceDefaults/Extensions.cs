@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Http.Resilience; // Required for resilience options
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
@@ -28,8 +29,15 @@ namespace ProjectName.ServiceDefaults
 
             builder.Services.ConfigureHttpClientDefaults(http =>
             {
-                // Turn on resilience by default
-                http.AddStandardResilienceHandler();
+                // FIX: Configure Global Resilience for AI/Agent workloads
+                // AI Agents are slow (LLMs take time, Browsers take time).
+                // We increase the default "AttemptTimeout" from 30s to 10 minutes.
+                http.AddStandardResilienceHandler(options =>
+                {
+                    options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(10);
+                    options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(10);
+                    options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(20);
+                });
 
                 // Turn on service discovery by default
                 http.AddServiceDiscovery();

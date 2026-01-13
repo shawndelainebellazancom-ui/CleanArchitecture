@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using OllamaSharp;
+using ProjectName.Application.Interfaces;
 using ProjectName.Infrastructure.Agents;
 using ProjectName.PlannerService.Services;
 using ProjectName.ServiceDefaults;
@@ -26,7 +27,7 @@ builder.Services.AddSingleton<IChatClient>(sp =>
 });
 
 // Register PlannerAgent as the Brain implementation
-builder.Services.AddSingleton<ProjectName.Core.Interfaces.IPlanner, PlannerAgent>();
+builder.Services.AddSingleton<IPlanner, PlannerAgent>();
 
 var app = builder.Build();
 

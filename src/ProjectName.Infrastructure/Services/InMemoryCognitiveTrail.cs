@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
-using ProjectName.Core.Interfaces;
+using ProjectName.Application.Interfaces;
 using System.Collections.Concurrent;
 using System.Text.Json;
 

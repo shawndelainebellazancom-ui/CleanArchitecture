@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using ProjectName.Application.Interfaces;
 using ProjectName.Core.Attributes;
-using ProjectName.Core.Interfaces;
 using System.Reflection;
 using System.Text.Json;
 

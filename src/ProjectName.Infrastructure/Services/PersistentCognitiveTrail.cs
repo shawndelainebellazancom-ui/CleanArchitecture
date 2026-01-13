@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using ProjectName.Core.Interfaces;
+using ProjectName.Application.Interfaces;
 using ProjectName.Infrastructure.Data;
 
 namespace ProjectName.Infrastructure.Services;

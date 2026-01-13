@@ -37,6 +37,7 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 	</ItemGroup>
 	<ItemGroup>
+		<ProjectReference Include="..\ProjectName.Application\ProjectName.Application.csproj" />
 		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
 	</ItemGroup>
 </Project>

@@ -2,6 +2,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Net.Http.Json;
+using System.Text.Json;
+using ProjectName.Application.Interfaces; // ✅ Now using the correct Core interface
 
 namespace ProjectName.Infrastructure.MCP;
 
@@ -11,10 +13,10 @@ public static class McpClientConfiguration
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // Register MCP HTTP client with service discovery
+        // Register the Core Interface implementation
         services.AddHttpClient<IMcpToolExecutor, McpToolExecutor>((sp, client) =>
         {
-            // Aspire will resolve "mcp-server" via service discovery
+            // Aspire resolves "mcp-server" automatically
             var endpoint = configuration.GetConnectionString("mcp-server")
                 ?? configuration["McpSettings:Endpoint"]
                 ?? "http://localhost:5159";
@@ -31,6 +33,7 @@ public class McpToolExecutor : IMcpToolExecutor
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<McpToolExecutor> _logger;
+    private static readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public McpToolExecutor(HttpClient httpClient, ILogger<McpToolExecutor> logger)
     {
@@ -38,7 +41,7 @@ public class McpToolExecutor : IMcpToolExecutor
         _logger = logger;
     }
 
-    public async Task<McpToolResult> ExecuteToolAsync(
+    public async Task<McpExecutionResult> ExecuteAsync(
         string toolName,
         Dictionary<string, object> arguments,
         CancellationToken ct = default)
@@ -66,65 +69,27 @@ public class McpToolExecutor : IMcpToolExecutor
             var response = await _httpClient.PostAsJsonAsync("/mcp", request, ct);
             response.EnsureSuccessStatusCode();
 
-            var result = await response.Content.ReadFromJsonAsync<McpResponse>(ct);
+            var result = await response.Content.ReadFromJsonAsync<McpResponse>(_jsonOptions, ct);
 
-            return new McpToolResult(
-                Success: true,
-                ToolName: toolName,
-                Data: result?.Result,
-                Error: null
-            );
+            if (result?.ErrorInfo != null)
+            {
+                return new McpExecutionResult(false, string.Empty, result.ErrorInfo.ToString());
+            }
+
+            // Serialize the result object to a string so the Planner/Orchestrator can log it
+            string output = result?.Result != null
+                ? JsonSerializer.Serialize(result.Result, _jsonOptions)
+                : "{}";
+
+            return new McpExecutionResult(true, output, null);
         }
         catch (Exception ex)
         {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError(ex, "MCP tool execution failed: {Tool}", toolName);
-            }
-
-            return new McpToolResult(
-                Success: false,
-                ToolName: toolName,
-                Data: null,
-                Error: ex.Message
-            );
-        }
-    }
-
-    public async Task<List<McpToolInfo>> ListAvailableToolsAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            var request = new
-            {
-                jsonrpc = "2.0",
-                method = "tools/list",
-                id = Guid.NewGuid().ToString()
-            };
-
-            var response = await _httpClient.PostAsJsonAsync("/mcp", request, ct);
-            response.EnsureSuccessStatusCode();
-
-            var result = await response.Content.ReadFromJsonAsync<McpListResponse>(ct);
-
-            return result?.Tools?.Select(t => new McpToolInfo(
-                Name: t.Name,
-                Description: t.Description,
-                InputSchema: t.InputSchema
-            )).ToList() ?? new List<McpToolInfo>();
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsEnabled(LogLevel.Error))
-            {
-                _logger.LogError(ex, "Failed to list MCP tools");
-            }
-            return new List<McpToolInfo>();
+            _logger.LogError(ex, "MCP tool execution failed: {Tool}", toolName);
+            return new McpExecutionResult(false, string.Empty, ex.Message);
         }
     }
 }
 
-// MCP Protocol DTOs
-internal record McpResponse(object? Result, object? Error);
-internal record McpListResponse(List<McpTool> Tools);
-internal record McpTool(string Name, string Description, Dictionary<string, object> InputSchema);
+// Internal DTOs for MCP Protocol
+internal record McpResponse(object? Result, object? ErrorInfo);

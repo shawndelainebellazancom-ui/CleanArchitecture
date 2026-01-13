@@ -1,4 +1,4 @@
-﻿using ProjectName.Core.Interfaces;
+﻿using ProjectName.Application.Interfaces;
 using ProjectName.PlannerService;
 using System.Numerics;
 

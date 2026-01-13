@@ -1,6 +1,5 @@
-﻿
-// File: ProjectName.Core/Interfaces/ICognitiveTrail.cs
-namespace ProjectName.Core.Interfaces;
+﻿// File: ProjectName.Core/Interfaces/ICognitiveTrail.cs
+namespace ProjectName.Application.Interfaces;
 
 /// <summary>
 /// I AM the memory of the Strange Loop.

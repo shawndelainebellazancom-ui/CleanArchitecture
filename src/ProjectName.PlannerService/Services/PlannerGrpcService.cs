@@ -1,5 +1,5 @@
 using Grpc.Core;
-using ProjectName.Core.Interfaces;
+using ProjectName.Application.Interfaces;
 using System.Diagnostics;
 
 namespace ProjectName.PlannerService.Services;
