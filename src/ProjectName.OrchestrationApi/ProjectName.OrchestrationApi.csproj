@@ -29,6 +29,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Application\ProjectName.Application.csproj" />
+		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
 		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 		<ProjectReference Include="..\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj" />
 	</ItemGroup>

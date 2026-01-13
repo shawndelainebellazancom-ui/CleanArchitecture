@@ -7,14 +7,21 @@ public class DefaultPlanner : IPlanner
 {
     public Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default)
     {
-        // Simple fallback plan
+        // Simple fallback plan using required init syntax
         var steps = new List<PlanStep>
         {
-            new(1, "Analyze Input", "manual_intervention", "{}"),
-            new(2, "Reflect", "manual_intervention", "{}")
+            new() { Order = 1, Action = "Analyze Input", Tool = "manual_intervention", ArgumentsJson = "{}" },
+            new() { Order = 2, Action = "Reflect", Tool = "manual_intervention", ArgumentsJson = "{}" }
         };
 
-        return Task.FromResult(new PlanResult(intent, steps, "Default planner execution"));
+        var result = new PlanResult
+        {
+            Goal = intent,
+            Steps = steps,
+            Analysis = "Default planner execution"
+        };
+
+        return Task.FromResult(result);
     }
 
     public Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
@@ -28,16 +35,5 @@ public class DefaultPlanner : IPlanner
         };
 
         return Task.FromResult(JsonSerializer.Serialize(validation));
-    }
-
-    // Legacy method kept if needed, or can be removed if not part of interface
-    public static Task<string> PlanBareMinimum(string seedIntent)
-    {
-        var plan = new
-        {
-            Steps = new[] { "Analyze Input", "Generate Artifact", "Reflect" },
-            Target = seedIntent
-        };
-        return Task.FromResult(JsonSerializer.Serialize(plan));
     }
 }

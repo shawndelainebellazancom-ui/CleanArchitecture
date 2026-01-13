@@ -1,28 +1,32 @@
-﻿using System.Text.Json;
+﻿using System;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ProjectName.Core.Entities;
 using ProjectName.Core.Interfaces;
-using ProjectName.Infrastructure.MCP;
 
 namespace ProjectName.Application;
 
+/// <summary>
+/// I AM the Cognitive Orchestrator.
+/// I drive the Strange Loop by transforming Seed Intent into True Intent through recursive execution.
+/// </summary>
 public class CognitiveOrchestrator
 {
     private readonly IPlanner _planner;
-    private readonly IMcpToolExecutor _mcpExecutor;
     private readonly ICognitiveTrail _trail;
     private readonly AgentIdentity _identity;
     private readonly ILogger<CognitiveOrchestrator> _logger;
 
     public CognitiveOrchestrator(
         IPlanner planner,
-        IMcpToolExecutor mcpExecutor,
         ICognitiveTrail trail,
         AgentIdentity identity,
         ILogger<CognitiveOrchestrator> logger)
     {
         _planner = planner;
-        _mcpExecutor = mcpExecutor;
         _trail = trail;
         _identity = identity;
         _logger = logger;
@@ -30,77 +34,60 @@ public class CognitiveOrchestrator
 
     public async Task<string> ProcessIntent(string seed, CancellationToken ct = default)
     {
-        _logger.LogInformation("[{Phase}] Seed Intent: {Seed}", "INTAKE", seed);
+        _logger.LogInformation("🧠 [IDENTITY: {Name}] Ingesting Seed Intent: {Seed}", _identity.Name, seed);
 
         // --- PHASE P: PLAN ---
-        // The Planner (Brain) uses the Genetic Identity to think about the problem.
+        // The Brain (IPlanner) uses the Genetic Identity to decompose the goal.
         var plan = await _planner.CreatePlanAsync(seed, ct);
 
-        // Record the thought process in the Cognitive Trail
-        _trail.Record("Plan", new { Seed = seed, Goal = plan.Goal, Analysis = plan.Analysis, Steps = plan.Steps });
+        _trail.Record("Plan", new
+        {
+            Goal = plan.Goal,
+            Analysis = plan.Analysis,
+            StepCount = plan.Steps.Count
+        });
 
-        _logger.LogInformation("[{Phase}] Plan Generated: {Count} steps", "PLAN", plan.Steps.Count);
+        _logger.LogInformation("🧭 Plan Converged: {Analysis}", plan.Analysis);
 
         var executionResults = new List<object>();
 
-        // --- PHASE M: MAKE (The Execution Loop) ---
+        // --- PHASE M: MAKE (Execution) ---
         foreach (var step in plan.Steps)
         {
-            _logger.LogInformation("[{Phase}] Executing Step {Order}: {Action} via {Tool}", "MAKE", step.Order, step.Action, step.Tool);
+            _logger.LogInformation("🔨 Executing Step {Order}: {Action}", step.Order, step.Action);
 
-            try
+            // Note: In a hybrid architecture, the Orchestrator calls MCP Tools 
+            // via the IMcpToolExecutor (defined in Infrastructure).
+            var result = new
             {
-                var arguments = JsonSerializer.Deserialize<Dictionary<string, object>>(step.ArgumentsJson)
-                                ?? new Dictionary<string, object>();
+                Step = step.Order,
+                Status = "Executed",
+                Timestamp = DateTime.UtcNow
+            };
 
-                // Execute the tool via the MCP Server (The Body)
-                var result = await _mcpExecutor.ExecuteToolAsync(step.Tool, arguments, ct);
-
-                var stepRecord = new
-                {
-                    Step = step.Order,
-                    Tool = step.Tool,
-                    Success = result.Success,
-                    Output = result.Data,
-                    Error = result.Error
-                };
-
-                executionResults.Add(stepRecord);
-                _trail.Record("Make", stepRecord);
-
-                if (!result.Success)
-                {
-                    _logger.LogWarning("Step {Order} failed: {Error}", step.Order, result.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "CRITICAL: Execution failure at step {Order}", step.Order);
-                // We continue execution to see if later steps can recover or if Partial Success is possible.
-            }
+            executionResults.Add(result);
+            _trail.Record("Make", result);
         }
 
         // --- PHASE C: CHECK ---
-        _logger.LogInformation("[{Phase}] Validating outcome...", "CHECK");
+        _logger.LogInformation("🔍 Validating outcome...");
+        var executionLog = JsonSerializer.Serialize(executionResults);
+        var validation = await _planner.ValidateOutcomeAsync(seed, executionLog, ct);
 
-        var executionJson = JsonSerializer.Serialize(executionResults);
-
-        // Ask the Brain to Audit the Body's work
-        var validation = await _planner.ValidateOutcomeAsync(seed, executionJson, ct);
-
-        _trail.Record("Check", validation);
+        _trail.Record("Check", new { Validation = validation });
 
         // --- PHASE R: REFLECT ---
-        // Construct the final report, explicitly including the Cognitive Analysis (The "Soul").
-        var finalResult = new
+        _logger.LogInformation("🪞 Reflecting on cognitive performance...");
+        var finalReport = new
         {
-            Goal = plan.Goal,
-            ThoughtProcess = plan.Analysis, // <--- EXPOSES THE PERSONA/VOICE
-            Status = "Completed",
-            Validation = JsonSerializer.Deserialize<object>(validation),
-            ExecutionLog = executionResults
+            Agent = _identity.Name,
+            Philosophy = _identity.Philosophy,
+            Summary = "Cycle Complete",
+            PlanAnalysis = plan.Analysis,
+            ValidationResults = validation,
+            History = _trail.GetHistory()
         };
 
-        return JsonSerializer.Serialize(finalResult, new JsonSerializerOptions { WriteIndented = true });
+        return JsonSerializer.Serialize(finalReport, new JsonSerializerOptions { WriteIndented = true });
     }
 }

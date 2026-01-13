@@ -1,18 +1,23 @@
 <#
 .SYNOPSIS
     Generates a full source code dump and directory tree for the PMCR-O Federation.
-    UPDATED v2.0: Includes Python, Docker, and Config files.
+    UPDATED v2.1: Includes gRPC Protos, MSBuild Props/Targets, and Hybrid infrastructure.
 #>
 
 param (
     [string]$RootPath = "$PSScriptRoot\..", # Assumes script is in /scripts. If in root, use "."
-    # ADDED: *.py, *.pyproj, *.sln, Dockerfile, requirements.txt
+    
+    # EXTENSIONS UPDATED: Added *.proto, *.props, *.targets for Hybrid Architecture logic.
     [string[]]$Extensions = @(
-        "*.cs", "*.csproj", "*.sln", 
+        "*.cs", "*.csproj", "*.sln", "*.proto", "*.props", "*.targets",
         "*.py", "*.pyproj", "requirements.txt", "Dockerfile",
         "*.xml", "*.json", "*.yaml", "*.md", "*.config"
     ),
-    [string[]]$IgnoreFolders = @("bin", "obj", ".git", ".vs", ".artifacts", "TestResults", "packages", "__pycache__", ".venv", "venv", "egg-info")
+    
+    [string[]]$IgnoreFolders = @(
+        "bin", "obj", ".git", ".vs", ".artifacts", "TestResults", 
+        "packages", "__pycache__", ".venv", "venv", "egg-info"
+    )
 )
 
 # 1. Setup Artifacts
@@ -22,9 +27,9 @@ if (-not (Test-Path $ArtifactsDir)) { New-Item -ItemType Directory -Path $Artifa
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $OutputFile = Join-Path $ArtifactsDir "SourceDump_$Timestamp.txt"
 
-Write-Host "🤖 PMCR-O Telemetry Extractor v2.0 initialized..." -ForegroundColor Cyan
+Write-Host "🤖 PMCR-O Telemetry Extractor v2.1 initialized..." -ForegroundColor Cyan
+Write-Host "📡 Capturing Mind (Code), Language (Protos), and Law (Props/Targets)..." -ForegroundColor Gray
 Write-Host "📂 Scanning Root: $RootPath" -ForegroundColor Gray
-Write-Host "📄 Output: $OutputFile" -ForegroundColor Gray
 
 $OutputBuffer = new-object System.Text.StringBuilder
 
@@ -38,7 +43,6 @@ function Get-Tree ($Path, $Indent = "") {
         Get-Tree $Item.FullName "$Indent    "
     }
     foreach ($File in $Files) {
-        # Check if file matches ANY of the extension patterns
         $Match = $false
         foreach ($Pattern in $Extensions) {
             if ($File.Name -like $Pattern) { $Match = $true; break }
@@ -62,13 +66,16 @@ $OutputBuffer.AppendLine("======================================================
 $OutputBuffer.AppendLine("SOURCE CODE INGESTION") | Out-Null
 $OutputBuffer.AppendLine("==============================================================================") | Out-Null
 
-# Use -Include with the array to catch all patterns (wildcards and specific names)
+# Use -Include with the array to catch all patterns
 $AllFiles = Get-ChildItem -Path $RootPath -Recurse -Include $Extensions | 
             Where-Object { 
                 $Path = $_.FullName
                 $ShouldIgnore = $false
                 foreach ($Ignore in $IgnoreFolders) {
-                    if ($Path -match "[\\/]$Ignore[\\/]") { $ShouldIgnore = $true; break }
+                    # Accurate folder boundary check
+                    if ($Path -match "[\\/]$Ignore[\\/]" -or $Path -match "[\\/]$Ignore$") { 
+                        $ShouldIgnore = $true; break 
+                    }
                 }
                 return -not $ShouldIgnore
             }
@@ -83,10 +90,14 @@ foreach ($File in $AllFiles) {
     
     try {
         $Content = Get-Content $File.FullName -Raw
-        $OutputBuffer.AppendLine($Content) | Out-Null
+        if ([string]::IsNullOrWhiteSpace($Content)) {
+            $OutputBuffer.AppendLine("[EMPTY FILE]") | Out-Null
+        } else {
+            $OutputBuffer.AppendLine($Content) | Out-Null
+        }
     }
     catch {
-        $OutputBuffer.AppendLine("[ERROR READING FILE]") | Out-Null
+        $OutputBuffer.AppendLine("[ERROR READING FILE: $($_.Exception.Message)]") | Out-Null
     }
     $OutputBuffer.AppendLine("") | Out-Null
 }
@@ -95,4 +106,4 @@ foreach ($File in $AllFiles) {
 Set-Content -Path $OutputFile -Value $OutputBuffer.ToString() -Encoding UTF8
 
 Write-Host "✅ Telemetry Extraction Complete." -ForegroundColor Green
-Write-Host "   Artifact saved to: $OutputFile" -ForegroundColor Yellow
+Write-Host "   Mind, Language, and Law captured to: $OutputFile" -ForegroundColor Yellow

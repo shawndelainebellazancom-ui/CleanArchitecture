@@ -1,192 +1,148 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
-using ProjectName.Core.Interfaces;
+﻿using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using ProjectName.Core.Attributes;
+using ProjectName.Core.Interfaces;
 using System.Reflection;
 using System.Text.Json;
-using OllamaSharp;
-using OllamaSharp.Models.Chat;
-using OllamaSharp.Models;
 
 namespace ProjectName.Infrastructure.Agents;
 
 /// <summary>
-/// The Cognitive Planner (Phase P).
-/// Reads its Identity from Assembly Metadata and uses strict Block-Based Prompting.
+/// Production-ready Cognitive Planner using IChatClient (Microsoft.Extensions.AI)
+/// Works with OllamaSharp implementation
 /// </summary>
 public class PlannerAgent : IPlanner
 {
-    private readonly OllamaApiClient _ollama;
+    private readonly IChatClient _chatClient;
     private readonly ILogger<PlannerAgent> _logger;
-    private readonly string _modelName;
-
-    // IDENTITY FIELDS (DNA)
     private readonly string _role;
     private readonly string _expertise;
     private readonly string _voice;
 
     public PlannerAgent(
-        IConfiguration config,
+        IChatClient chatClient,
         ILogger<PlannerAgent> logger)
     {
+        _chatClient = chatClient;
         _logger = logger;
 
-        // 1. HARDWARE CONFIG
-        var ollamaEndpoint = config["AgentSettings:OllamaEndpoint"] ?? "http://localhost:11434";
-        _modelName = config["AgentSettings:ModelName"] ?? "qwen2.5-coder:latest";
+        // Extract persona from assembly attributes
+        var persona = GetPersonaAttribute();
+        _role = persona?.Role ?? "PMCR-O Planner";
+        _expertise = persona?.Expertise ?? "General Orchestration";
+        _voice = persona?.Voice ?? "Analytical and Precise";
+    }
 
-        _ollama = new OllamaApiClient(ollamaEndpoint);
-
-        // 2. READ GENETIC MEMORY (Assembly Metadata)
-        // This reads the attributes injected by MSBuild in the .csproj
-        var persona = typeof(PlannerAgent).Assembly.GetCustomAttribute<AgentPersonaAttribute>();
-
-        if (persona != null)
-        {
-            _role = persona.Role;
-            _expertise = persona.Expertise;
-            _voice = persona.Voice;
-            _logger.LogInformation("🧬 AGENT DNA ACTIVATED: {Role} | {Voice}", _role, _voice);
-        }
-        else
-        {
-            // Fallback for development/testing if attributes aren't present
-            _role = "PMCR-O Planner";
-            _expertise = "General Orchestration";
-            _voice = "Robotic";
-            _logger.LogWarning("⚠️ AGENT DNA MISSING. Using defaults.");
-        }
+    private static AgentPersonaAttribute? GetPersonaAttribute()
+    {
+        return typeof(PlannerAgent).Assembly.GetCustomAttribute<AgentPersonaAttribute>();
     }
 
     public async Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default)
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Creating plan for intent: {Intent}", intent);
-        }
+        _logger.LogInformation("🧠 Creating plan for intent: {Intent}", intent);
 
         try
         {
-            // 3. CONSTRUCT THE COGNITIVE BLOCK
-            var systemPrompt = BuildCognitiveArchitecture();
-            var userPrompt = BuildIntentBlock(intent);
-
-            var request = new ChatRequest
+            // Build chat history with system and user messages
+            var chatHistory = new List<ChatMessage>
             {
-                Model = _modelName,
-                Messages = new List<Message>
-                {
-                    new(ChatRole.System, systemPrompt),
-                    new(ChatRole.User, userPrompt)
-                },
-                Format = "json",
-                Stream = false,
-                Options = new RequestOptions
-                {
-                    Temperature = 0.2f, // Low temperature for strict adherence
-                    NumPredict = 4096
-                }
+                new(ChatRole.System, BuildCognitiveInstructions()),
+                new(ChatRole.User, BuildIntentPrompt(intent))
             };
 
-            ChatResponseStream? lastResponse = null;
-            await foreach (var response in _ollama.ChatAsync(request, ct))
-            {
-                lastResponse = response;
-            }
+            // Call the LLM with JSON format
+            var response = await _chatClient.GetResponseAsync(
+                chatHistory,
+                new ChatOptions
+                {
+                    ResponseFormat = ChatResponseFormat.Json
+                },
+                ct
+            );
 
-            var responseContent = lastResponse?.Message?.Content ?? "{}";
+            var content = response.Messages[^1].Text ?? "{}";
 
-            // 4. PARSE & RETURN
-            return ParseStructuredResponse(responseContent);
+            _logger.LogDebug("📝 Raw LLM Response: {Response}", content);
+
+            return ParseStructuredResponse(content);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating plan");
+            _logger.LogError(ex, "❌ Error creating plan");
             return CreateFallbackPlan(intent, ex.Message);
         }
     }
 
-    /// <summary>
-    /// Builds the System Prompt using the Genetic Identity and BIP Structure.
-    /// </summary>
-    private string BuildCognitiveArchitecture()
+    private string BuildCognitiveInstructions()
     {
-        // $$""" allows interpolation {{var}} while preserving JSON braces { }
         return $$"""
-        @persona {
-            "role": "{{_role}}",
-            "expertise": "{{_expertise}}",
-            "voice": "{{_voice}}"
-        }
+        You are {{_role}}, an AI agent specialized in {{_expertise}}.
+        Your communication style is: {{_voice}}.
 
-        @context {
-            "system": "PMCR-O (Plan-Make-Check-Reflect-Orchestrate)",
-            "environment": ".NET 10 / Aspire / MCP",
-            "available_tools": [
-                "browser_navigate(url)",
-                "browser_click(selector)",
-                "browser_type(selector, text)",
-                "browser_screenshot(path, fullPage)",
-                "browser_extract(selector, format)",
-                "browser_evaluate(script)"
-            ]
-        }
+        SYSTEM CONTEXT:
+        - Framework: PMCR-O (Plan-Make-Check-Reflect-Orchestrate)
+        - Environment: .NET 10 / Aspire / MCP
+        - Available MCP Tools:
+          * browser_navigate(url)
+          * browser_click(selector)
+          * browser_type(selector, text)
+          * browser_screenshot(path, fullPage)
+          * browser_extract(selector, format)
+          * browser_evaluate(script)
 
-        @constraints {
-            "output_format": "JSON_ONLY",
-            "no_markdown": true,
-            "no_hallucinations": "Use only provided tools",
-            "thinking": "Required in '@thought' field"
-        }
+        OUTPUT REQUIREMENTS:
+        1. Respond ONLY with valid JSON (no markdown, no preamble)
+        2. Include a "@thought" field with your reasoning
+        3. Break down tasks into atomic, executable steps
+        4. Use only the MCP tools listed above
 
-        @format {
-            "root_object": {
-                "@thought": "Step-by-step reasoning explaining WHY these steps were chosen.",
-                "goal": "Refined single-sentence goal",
-                "steps": [
-                    {
-                        "order": 1,
-                        "action": "Description of action",
-                        "tool": "tool_name",
-                        "arguments": { "arg": "value" }
-                    }
-                ]
+        JSON FORMAT:
+        {
+          "@thought": "Your step-by-step reasoning in {{_voice}} style",
+          "goal": "Single-sentence refined goal",
+          "steps": [
+            {
+              "order": 1,
+              "action": "Description of what to do",
+              "tool": "tool_name",
+              "arguments": { "key": "value" }
             }
+          ]
         }
+
+        CRITICAL: Output MUST be valid JSON. No other text allowed.
         """;
     }
 
-    private static string BuildIntentBlock(string intent)
+    private string BuildIntentPrompt(string intent)
     {
         return $$"""
-        @intent {
-            "{{intent}}"
-        }
+        USER INTENT: {{intent}}
 
-        @instruction {
-            "Analyze the @intent using your @expertise.",
-            "Formulate a plan using the available tools.",
-            "Output ONLY valid JSON matching the @format."
-        }
+        TASK: Analyze this intent and create an execution plan.
+        - Think step-by-step in your {{_voice}} voice
+        - Output ONLY the JSON object (no explanation outside JSON)
+        - Ensure each step uses an available MCP tool
+        - Be specific with tool arguments (actual URLs, selectors, etc.)
         """;
     }
 
-    private static PlanResult ParseStructuredResponse(string json)
+    private PlanResult ParseStructuredResponse(string json)
     {
         try
         {
-            // Clean markdown blocks if the LLM ignores instructions
+            // Clean any markdown artifacts
             json = json.Replace("```json", "").Replace("```", "").Trim();
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            // Map "@thought" to the Analysis property
-            // Check multiple possible keys in case the LLM hallucinates casing
+            // Extract thought/analysis
             var thought = root.TryGetProperty("@thought", out var t) ? t.GetString() :
                           root.TryGetProperty("thought", out t) ? t.GetString() :
                           root.TryGetProperty("analysis", out var a) ? a.GetString() :
-                          "No thought trace provided.";
+                          "No reasoning provided.";
 
             var goal = root.GetProperty("goal").GetString() ?? "No goal defined";
 
@@ -203,55 +159,74 @@ public class PlannerAgent : IPlanner
                         ? argsElement.GetRawText()
                         : "{}";
 
-                    steps.Add(new PlanStep(order, action, tool, argsJson));
+                    steps.Add(new PlanStep
+                    {
+                        Order = order,
+                        Action = action,
+                        Tool = tool,
+                        ArgumentsJson = argsJson
+                    });
                 }
             }
 
-            return new PlanResult(goal, steps, thought ?? "");
+            _logger.LogInformation("✅ Parsed {StepCount} execution steps", steps.Count);
+
+            return new PlanResult
+            {
+                Goal = goal,
+                Steps = steps,
+                Analysis = thought ?? ""
+            };
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to parse LLM output. Raw JSON: {Json}", json);
             throw new JsonException($"Failed to parse Agent output: {ex.Message}. Raw JSON: {json}");
         }
     }
 
-    private PlanResult CreateFallbackPlan(string intent, string reason)
+    private static PlanResult CreateFallbackPlan(string intent, string reason)
     {
-        return new PlanResult(
-            Goal: intent,
-            Steps: [],
-            Analysis: $"Planning Failed: {reason}. Manual Intervention Required."
-        );
+        return new PlanResult
+        {
+            Goal = intent,
+            Steps = [],
+            Analysis = $"⚠️ Planning Failed: {reason}. Manual Intervention Required."
+        };
     }
 
     public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
     {
-        // Simple validator that adopts the Auditor persona
-        // In a full implementation, this would also use a @block prompt
-
         var prompt = $$"""
-        @persona { "role": "Auditor", "expertise": "Compliance and Verification" }
-        @context { "task": "Check execution against intent" }
-        @intent { "{{intent}}" }
-        @data { {{executionLog}} }
+        ROLE: Auditor and Compliance Verifier
+        TASK: Validate execution results against original intent
         
-        Respond with JSON: { "success": true/false, "reasoning": "..." }
+        ORIGINAL INTENT: {{intent}}
+        
+        EXECUTION LOG:
+        {{executionLog}}
+        
+        OUTPUT FORMAT (JSON only):
+        {
+          "success": true/false,
+          "reasoning": "Detailed explanation of validation decision"
+        }
         """;
 
-        var request = new ChatRequest
+        var chatHistory = new List<ChatMessage>
         {
-            Model = _modelName,
-            Messages = new List<Message> { new(ChatRole.User, prompt) },
-            Format = "json",
-            Stream = false
+            new(ChatRole.User, prompt)
         };
 
-        var responseContent = "";
-        await foreach (var chunk in _ollama.ChatAsync(request, ct))
-        {
-            responseContent = chunk.Message.Content;
-        }
+        var response = await _chatClient.GetResponseAsync(
+            chatHistory,
+            new ChatOptions
+            {
+                ResponseFormat = ChatResponseFormat.Json
+            },
+            ct
+        );
 
-        return responseContent;
+        return response.Messages[^1].Text ?? "{}";
     }
 }

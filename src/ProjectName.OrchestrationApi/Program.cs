@@ -1,14 +1,14 @@
+using Microsoft.Extensions.AI;
 using Microsoft.OpenApi;
-using ProjectName.Application;          // For CognitiveOrchestrator
-using ProjectName.Core.Entities;        // For AgentIdentity
-using ProjectName.Core.Interfaces;      // For IPlanner, ICognitiveTrail
+using ProjectName.Application;
+using ProjectName.Core.Entities;
+using ProjectName.Core.Interfaces;
 using ProjectName.Infrastructure.Data;
-using ProjectName.Infrastructure.MCP;        // For McpClientConfiguration
-using ProjectName.Infrastructure.Services;   // For InMemoryCognitiveTrail
-using ProjectName.OrchestrationApi.Services; // For GrpcPlannerGateway
+using ProjectName.Infrastructure.MCP;
+using ProjectName.Infrastructure.Services;
+using ProjectName.OrchestrationApi.Services;
 using ProjectName.PlannerService;
 using ProjectName.ServiceDefaults;
-using System.Numerics;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddNpgsqlDbContext<CognitiveDbContext>("cognitivedb");
@@ -24,6 +24,7 @@ builder.Services.AddSwaggerGen(options =>
         Version = "v1"
     });
 });
+
 // 1. REGISTER gRPC CLIENT (Connects to PlannerService)
 builder.Services.AddGrpcClient<Planner.PlannerClient>(options =>
 {
@@ -41,32 +42,28 @@ builder.Services.AddGrpcClient<Planner.PlannerClient>(options =>
     }
     return handler;
 })
-// !!! THE FIX: EXTEND TIMEOUT FOR AI OPERATIONS !!!
 .AddStandardResilienceHandler(options =>
 {
-    // Allow 10 minutes total for Cold Start + Inference
+    // Allow 10 minutes total for AI operations
     options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(10);
-
-    // Allow 10 minutes for the individual attempt
     options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(10);
-
-    // Configure Circuit Breaker to be patient
     options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(20);
 });
+
 // 2. REGISTER MCP CLIENT (Connects to McpServer)
-// This extension method (from Infrastructure) sets up HttpClient for IMcpToolExecutor
 builder.Services.AddMcpClient(builder.Configuration);
 
 // 3. REGISTER CORE DEPENDENCIES
-// The "Brain" Proxy
 builder.Services.AddScoped<IPlanner, GrpcPlannerGateway>();
 builder.Services.AddScoped<ICognitiveTrail, PersistentCognitiveTrail>();
 
-// The "Memory"
-builder.Services.AddSingleton<ICognitiveTrail, InMemoryCognitiveTrail>();
-
-// The "Ego"
-builder.Services.AddSingleton(new AgentIdentity("Orchestrator", "Executive", "PMCR-O"));
+// The "Ego" - Fixed with Voice parameter
+builder.Services.AddSingleton(new AgentIdentity(
+    Name: "Orchestrator",
+    Role: "Executive",
+    Philosophy: "PMCR-O",
+    Voice: "Analytical"
+));
 
 // 4. REGISTER THE ORCHESTRATOR
 builder.Services.AddScoped<CognitiveOrchestrator>();
@@ -75,6 +72,8 @@ builder.Services.AddScoped<CognitiveOrchestrator>();
 builder.AddServiceDefaults();
 
 var app = builder.Build();
+
+// Initialize database
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -86,10 +85,9 @@ using (var scope = app.Services.CreateScope())
         logger.LogInformation("🧠 Initializing Cognitive Memory (Database)...");
         await context.Database.EnsureCreatedAsync();
     }
-    catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P04") // 42P04 = Database already exists
+    catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P04")
     {
         logger.LogWarning("⚠️ Database race condition detected. Retrying to ensure Schema...");
-        // Retry: Now that the DB exists, this call will skip creation and build the tables.
         await context.Database.EnsureCreatedAsync();
     }
     catch (Exception ex)
@@ -98,7 +96,7 @@ using (var scope = app.Services.CreateScope())
         throw;
     }
 }
-// ... rest of the pipeline (Swagger, HTTPS, MapControllers, etc.) ...
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

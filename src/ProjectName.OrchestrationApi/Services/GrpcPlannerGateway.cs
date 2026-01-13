@@ -1,6 +1,6 @@
 ﻿using ProjectName.Core.Interfaces;
 using ProjectName.PlannerService;
-using System.Text.Json;
+using System.Numerics;
 
 namespace ProjectName.OrchestrationApi.Services;
 
@@ -28,14 +28,20 @@ public class GrpcPlannerGateway : IPlanner
             throw new Exception($"Planner service failed: {response.ErrorMessage}");
         }
 
-        var steps = response.Steps.Select(s => new PlanStep(
-            s.Order,
-            s.Action,
-            s.Tool,
-            s.ArgumentsJson
-        )).ToList();
+        var steps = response.Steps.Select(s => new PlanStep
+        {
+            Order = s.Order,
+            Action = s.Action,
+            Tool = s.Tool,
+            ArgumentsJson = s.ArgumentsJson
+        }).ToList();
 
-        return new PlanResult(response.Goal, steps, response.Analysis);
+        return new PlanResult
+        {
+            Goal = response.Goal,
+            Steps = steps,
+            Analysis = response.Analysis
+        };
     }
 
     public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)

@@ -1,39 +1,36 @@
-using ProjectName.Core.Interfaces;
-using ProjectName.Infrastructure.Agents; // Namespace of PlannerAgent
-using ProjectName.Infrastructure.MCP;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
+using ProjectName.Infrastructure.Agents;
 using ProjectName.PlannerService.Services;
 using ProjectName.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add gRPC services
-builder.Services.AddGrpc(options =>
-{
-    options.MaxReceiveMessageSize = 16 * 1024 * 1024;
-    options.MaxSendMessageSize = 16 * 1024 * 1024;
-});
-
-// Add MCP Client
-builder.Services.AddMcpClient(builder.Configuration);
-
-// REGISTER THE AGENT (The Brain)
-// This will trigger the Constructor which reads the DNA attributes
-builder.Services.AddSingleton<IPlanner, PlannerAgent>();
-
-builder.Services.AddLogging(logging =>
-{
-    logging.AddConsole();
-    logging.AddDebug();
-});
-
 builder.AddServiceDefaults();
+builder.Services.AddGrpc();
+
+// Get configuration
+var ollamaEndpoint = builder.Configuration["AgentSettings:OllamaEndpoint"] ?? "http://localhost:11434";
+var modelName = builder.Configuration["AgentSettings:ModelName"] ?? "qwen2.5-coder:latest";
+
+// Register OllamaSharp as IChatClient (implements Microsoft.Extensions.AI)
+builder.Services.AddSingleton<IChatClient>(sp =>
+{
+    var ollamaClient = new OllamaApiClient(
+        new Uri(ollamaEndpoint),
+        modelName
+    );
+
+    // OllamaApiClient implements IChatClient directly
+    return ollamaClient;
+});
+
+// Register PlannerAgent as the Brain implementation
+builder.Services.AddSingleton<ProjectName.Core.Interfaces.IPlanner, PlannerAgent>();
 
 var app = builder.Build();
 
 app.MapGrpcService<PlannerGrpcService>();
-
-app.MapGet("/", () => "PMCR-O Planner gRPC Service is Active.");
-
 app.MapDefaultEndpoints();
 
 app.Run();

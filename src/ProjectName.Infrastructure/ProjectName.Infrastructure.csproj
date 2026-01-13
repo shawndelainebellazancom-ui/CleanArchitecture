@@ -1,20 +1,15 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-
-		<!-- 
-           GENETIC MARKERS 
-           The Template Engine replaces these DEFAULT values with CLI arguments.
-        -->
+		<NoWarn>$(NoWarn);NU1507;NU1605</NoWarn>
+	</PropertyGroup>
+	<PropertyGroup>
 		<AgentRole>DEFAULT_AGENT_ROLE</AgentRole>
 		<AgentExpertise>DEFAULT_AGENT_EXPERTISE</AgentExpertise>
 		<AgentVoice>DEFAULT_AGENT_VOICE</AgentVoice>
 	</PropertyGroup>
-
-	<!-- INJECT MARKERS INTO ASSEMBLY METADATA -->
 	<ItemGroup>
 		<AssemblyAttribute Include="ProjectName.Core.Attributes.AgentPersonaAttribute">
 			<_Parameter1>$(AgentRole)</_Parameter1>
@@ -22,24 +17,26 @@
 			<_Parameter3>$(AgentVoice)</_Parameter3>
 		</AssemblyAttribute>
 	</ItemGroup>
-
 	<ItemGroup>
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools">
-			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-			<PrivateAssets>all</PrivateAssets>
-		</PackageReference>
+		<!-- Microsoft.Extensions.AI for IChatClient abstraction -->
+		<PackageReference Include="Microsoft.Extensions.AI" />
+
+		<!-- Database -->
+		<PackageReference Include="Microsoft.EntityFrameworkCore" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" PrivateAssets="all" />
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+
+		<!-- MCP Protocol -->
 		<PackageReference Include="ModelContextProtocol" />
 		<PackageReference Include="ModelContextProtocol.Core" />
-		<PackageReference Include="Microsoft.Extensions.AI" />
-		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
-		<PackageReference Include="Microsoft.Agents.AI" />
-		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-		<PackageReference Include="OllamaSharp" />
-		<PackageReference Include="Microsoft.Extensions.Http" />
-	</ItemGroup>
 
+		<!-- Extensions -->
+		<PackageReference Include="Microsoft.Extensions.Http" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
 	</ItemGroup>
-
 </Project>

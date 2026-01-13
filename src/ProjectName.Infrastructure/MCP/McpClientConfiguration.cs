@@ -20,7 +20,7 @@ public static class McpClientConfiguration
                 ?? "http://localhost:5159";
 
             client.BaseAddress = new Uri(endpoint);
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = TimeSpan.FromMinutes(5);
         });
 
         return services;

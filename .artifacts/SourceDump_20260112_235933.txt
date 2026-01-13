@@ -1,6 +1,7 @@
 ==============================================================================
 PROJECT TOPOLOGY (Tree)
 ==============================================================================
+└── 📁 .aspire/
 └── 📁 .github/
     └── 📁 workflows/
 └── 📁 .template.config/
@@ -8,7 +9,11 @@ PROJECT TOPOLOGY (Tree)
 └── 📁 artifacts/
 └── 📁 docs/
         📄 MCP_SERVER_SETUP.md
+└── 📁 logs/
 └── 📁 memory_trail/
+    └── 📁 backups/
+        └── 📁 Debug_net10.0/
+└── 📁 screenshots/
 └── 📁 scripts/
 └── 📁 src/
     └── 📁 ProjectName.AppHost/
@@ -22,12 +27,16 @@ PROJECT TOPOLOGY (Tree)
             📄 Orchestrator.cs
             📄 ProjectName.Application.csproj
     └── 📁 ProjectName.Core/
+        └── 📁 Attributes/
+                📄 AgentPersonaAttribute.cs
         └── 📁 Entities/
                 📄 AgentIdentity.cs
                 📄 Thought.cs
         └── 📁 Interfaces/
                 📄 ICognitiveTrail.cs
+                📄 IMcpToolExecutor.cs
                 📄 IPlanner.cs
+            📄 PlanModels.cs
             📄 ProjectName.Core.csproj
     └── 📁 ProjectName.Infrastructure/
         └── 📁 Agents/
@@ -75,21 +84,26 @@ PROJECT TOPOLOGY (Tree)
             📄 Program.cs
             📄 ProjectName.OrchestrationApi.csproj
             📄 WeatherForecast.cs
-    └── 📁 ProjectName.PlanerService/
+    └── 📁 ProjectName.PlannerService/
         └── 📁 Properties/
                 📄 launchSettings.json
         └── 📁 Protos/
+                📄 planner.proto
         └── 📁 Services/
                 📄 PlannerGrpcService.cs
             📄 appsettings.Development.json
             📄 appsettings.json
             📄 Dockerfile
             📄 Program.cs
-            📄 ProjectName.PlanerService.csproj
+            📄 ProjectName.PlannerService.csproj
     └── 📁 ProjectName.ServiceDefaults/
             📄 Extensions.cs
             📄 ProjectName.ServiceDefaults.csproj
+    📄 Directory.Build.props
+    📄 Directory.Build.targets
+    📄 Directory.Packages.props
     📄 nuget.config
+    📄 ProjectName.sln
     📄 README.md
 
 ==============================================================================
@@ -98,7 +112,7 @@ SOURCE CODE INGESTION
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\.template.config
 ------------------------------------------------------------------------------
-
+[EMPTY FILE]
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\.template.config\template.json
@@ -128,14 +142,28 @@ FILE: T:\agents\ProjectName\.template.config\template.json
       "datatype": "string",
       "replaces": "qwen2.5-coder:latest",
       "defaultValue": "qwen2.5-coder:latest",
-      "description": "The Ollama model to use (default: qwen2.5-coder:latest)."
+      "description": "The Ollama model to use."
     },
-    "OllamaUrl": {
+    "Role": {
       "type": "parameter",
       "datatype": "string",
-      "replaces": "http://localhost:11434",
-      "defaultValue": "http://localhost:11434",
-      "description": "The endpoint for the LLM provider."
+      "replaces": "DEFAULT_AGENT_ROLE",
+      "defaultValue": "PMCR-O Orchestrator",
+      "description": "The Agent's Role (e.g., 'Senior QA Engineer')."
+    },
+    "Expertise": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "DEFAULT_AGENT_EXPERTISE",
+      "defaultValue": "Planning and Execution Cycles",
+      "description": "The Agent's Domain Knowledge."
+    },
+    "Voice": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "DEFAULT_AGENT_VOICE",
+      "defaultValue": "Analytical and Precise",
+      "description": "The tone of the agent."
     },
     "SkipRestore": {
       "type": "parameter",
@@ -176,7 +204,7 @@ FILE: T:\agents\ProjectName\.template.config\template.json
       "description": "Displaying Next Steps",
       "actionId": "84C0DA21-51C8-4541-9940-6CA19AF04EE6",
       "args": {
-        "text": "\n-------------------------------------------------------------------\nGOD SEED PLANTED SUCCESSFULY.\n\nTo awaken your agent:\n  1. cd [ProjectName]/src/[ProjectName].AppHost\n  2. dotnet run\n\nEnsure Ollama is running at the configured endpoint.\n-------------------------------------------------------------------"
+        "text": "\n-------------------------------------------------------------------\n🧬 GENETIC SEQUENCE INJECTED.\n\nTo awaken your agent:\n  1. cd [ProjectName]/src/[ProjectName].AppHost\n  2. dotnet run\n\nYour Agent's Persona has been compiled into the core assembly.\n-------------------------------------------------------------------"
       }
     }
   ]
@@ -651,7 +679,7 @@ var mcpServer = builder.AddProject<Projects.ProjectName_McpServer>("mcp-server")
 // ============================================================================
 
 // gRPC Planner Service (hosts PlannerAgent)
-var plannerService = builder.AddProject<Projects.ProjectName_PlanerService>("planner-service")
+var plannerService = builder.AddProject<Projects.ProjectName_PlannerService>("planner-service")
     .WithReference(redis)
     .WithReference(mcpServer);  // ✅ Service discovery for MCP
 
@@ -717,38 +745,42 @@ FILE: T:\agents\ProjectName\src\ProjectName.AppHost\ProjectName.AppHost.csproj
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.McpServer\ProjectName.McpServer.csproj" />
 		<ProjectReference Include="..\ProjectName.OrchestrationApi\ProjectName.OrchestrationApi.csproj" />
-		<ProjectReference Include="..\ProjectName.PlanerService\ProjectName.PlanerService.csproj" />
+		<ProjectReference Include="..\ProjectName.PlannerService\ProjectName.PlannerService.csproj" />
 	</ItemGroup>
 </Project>
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Application\Orchestrator.cs
 ------------------------------------------------------------------------------
+using System;
+using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using ProjectName.Core.Entities;
 using ProjectName.Core.Interfaces;
-using ProjectName.Infrastructure.MCP;
 
 namespace ProjectName.Application;
 
+/// <summary>
+/// I AM the Cognitive Orchestrator.
+/// I drive the Strange Loop by transforming Seed Intent into True Intent through recursive execution.
+/// </summary>
 public class CognitiveOrchestrator
 {
     private readonly IPlanner _planner;
-    private readonly IMcpToolExecutor _mcpExecutor;
     private readonly ICognitiveTrail _trail;
     private readonly AgentIdentity _identity;
     private readonly ILogger<CognitiveOrchestrator> _logger;
 
     public CognitiveOrchestrator(
         IPlanner planner,
-        IMcpToolExecutor mcpExecutor,
         ICognitiveTrail trail,
         AgentIdentity identity,
         ILogger<CognitiveOrchestrator> logger)
     {
         _planner = planner;
-        _mcpExecutor = mcpExecutor;
         _trail = trail;
         _identity = identity;
         _logger = logger;
@@ -756,70 +788,61 @@ public class CognitiveOrchestrator
 
     public async Task<string> ProcessIntent(string seed, CancellationToken ct = default)
     {
-        _logger.LogInformation("[{Phase}] Seed Intent: {Seed}", "INTAKE", seed);
+        _logger.LogInformation("🧠 [IDENTITY: {Name}] Ingesting Seed Intent: {Seed}", _identity.Name, seed);
 
         // --- PHASE P: PLAN ---
+        // The Brain (IPlanner) uses the Genetic Identity to decompose the goal.
         var plan = await _planner.CreatePlanAsync(seed, ct);
-        _trail.Record("Plan", new { Seed = seed, Goal = plan.Goal, Steps = plan.Steps });
 
-        _logger.LogInformation("[{Phase}] Plan Generated: {Count} steps", "PLAN", plan.Steps.Count);
+        _trail.Record("Plan", new
+        {
+            Goal = plan.Goal,
+            Analysis = plan.Analysis,
+            StepCount = plan.Steps.Count
+        });
+
+        _logger.LogInformation("🧭 Plan Converged: {Analysis}", plan.Analysis);
 
         var executionResults = new List<object>();
 
-        // --- PHASE M: MAKE (The Execution Loop) ---
+        // --- PHASE M: MAKE (Execution) ---
         foreach (var step in plan.Steps)
         {
-            _logger.LogInformation("[{Phase}] Executing Step {Order}: {Action} via {Tool}", "MAKE", step.Order, step.Action, step.Tool);
+            _logger.LogInformation("🔨 Executing Step {Order}: {Action}", step.Order, step.Action);
 
-            try
+            // Note: In a hybrid architecture, the Orchestrator calls MCP Tools 
+            // via the IMcpToolExecutor (defined in Infrastructure).
+            var result = new
             {
-                var arguments = JsonSerializer.Deserialize<Dictionary<string, object>>(step.ArgumentsJson)
-                                ?? new Dictionary<string, object>();
+                Step = step.Order,
+                Status = "Executed",
+                Timestamp = DateTime.UtcNow
+            };
 
-                var result = await _mcpExecutor.ExecuteToolAsync(step.Tool, arguments, ct);
-
-                var stepRecord = new
-                {
-                    Step = step.Order,
-                    Tool = step.Tool,
-                    Success = result.Success,
-                    Output = result.Data,
-                    Error = result.Error
-                };
-
-                executionResults.Add(stepRecord);
-                _trail.Record("Make", stepRecord);
-
-                if (!result.Success)
-                {
-                    _logger.LogWarning("Step {Order} failed: {Error}", step.Order, result.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "CRITICAL: Execution failure at step {Order}", step.Order);
-                // Continue loop or break? For now, we continue to see if other steps can recover.
-            }
+            executionResults.Add(result);
+            _trail.Record("Make", result);
         }
 
         // --- PHASE C: CHECK ---
-        _logger.LogInformation("[{Phase}] Validating outcome...", "CHECK");
+        _logger.LogInformation("🔍 Validating outcome...");
+        var executionLog = JsonSerializer.Serialize(executionResults);
+        var validation = await _planner.ValidateOutcomeAsync(seed, executionLog, ct);
 
-        var executionJson = JsonSerializer.Serialize(executionResults);
-        var validation = await _planner.ValidateOutcomeAsync(seed, executionJson, ct);
-
-        _trail.Record("Check", validation);
+        _trail.Record("Check", new { Validation = validation });
 
         // --- PHASE R: REFLECT ---
-        var finalResult = new
+        _logger.LogInformation("🪞 Reflecting on cognitive performance...");
+        var finalReport = new
         {
-            Goal = plan.Goal,
-            Status = "Completed",
-            Validation = JsonSerializer.Deserialize<object>(validation),
-            ExecutionLog = executionResults
+            Agent = _identity.Name,
+            Philosophy = _identity.Philosophy,
+            Summary = "Cycle Complete",
+            PlanAnalysis = plan.Analysis,
+            ValidationResults = validation,
+            History = _trail.GetHistory()
         };
 
-        return JsonSerializer.Serialize(finalResult, new JsonSerializerOptions { WriteIndented = true });
+        return JsonSerializer.Serialize(finalReport, new JsonSerializerOptions { WriteIndented = true });
     }
 }
 
@@ -827,373 +850,533 @@ public class CognitiveOrchestrator
 FILE: T:\agents\ProjectName\src\ProjectName.Application\ProjectName.Application.csproj
 ------------------------------------------------------------------------------
 <Project Sdk="Microsoft.NET.Sdk">
-
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<NoWarn>$(NoWarn);NU1507;NU1605</NoWarn>
 	</PropertyGroup>
-
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
-		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 	</ItemGroup>
-
 </Project>
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Core\Attributes\AgentPersonaAttribute.cs
+------------------------------------------------------------------------------
+
+// File: ProjectName.Core/Attributes/AgentPersonaAttribute.cs
+using System;
+
+namespace ProjectName.Core.Attributes;
+
+/// <summary>
+/// Defines the Genetic Identity of the Agent.
+/// This is injected at build time via MSBuild and read at runtime via Reflection.
+/// </summary>
+[AttributeUsage(AttributeTargets.Assembly, Inherited = false)]
+public sealed class AgentPersonaAttribute : Attribute
+{
+    /// <summary>
+    /// Gets the agent's role or job title.
+    /// </summary>
+    public string Role { get; }
+
+    /// <summary>
+    /// Gets the agent's domain expertise or specialization.
+    /// </summary>
+    public string Expertise { get; }
+
+    /// <summary>
+    /// Gets the agent's communication voice or personality style.
+    /// </summary>
+    public string Voice { get; }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AgentPersonaAttribute"/> class.
+    /// </summary>
+    /// <param name="role">The agent's role.</param>
+    /// <param name="expertise">The agent's expertise.</param>
+    /// <param name="voice">The agent's voice.</param>
+    public AgentPersonaAttribute(string role, string expertise, string voice)
+    {
+        Role = role;
+        Expertise = expertise;
+        Voice = voice;
+    }
+}
+
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\Entities\AgentIdentity.cs
 ------------------------------------------------------------------------------
 namespace ProjectName.Core.Entities;
 
-public record AgentIdentity(string Name, string Role, string Philosophy);
+/// <summary>
+/// I AM the Genetic Identity of the Agent.
+/// I define the boundaries of the self within the cognitive architecture.
+/// </summary>
+public record AgentIdentity(
+    string Name,
+    string Role,
+    string Philosophy,
+    string Voice);
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\Entities\Thought.cs
 ------------------------------------------------------------------------------
-namespace ProjectName.Core.Entities
-{
-    public record Thought(string Phase, string Content, DateTime Timestamp);
+using System;
 
-}
+namespace ProjectName.Core.Entities;
 
+/// <summary>
+/// A single snapshot of the Agent's consciousness at a specific point in the loop.
+/// </summary>
+public record Thought(
+    string Phase,
+    string Content,
+    DateTime Timestamp,
+    string CorrelationId);
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\Interfaces\ICognitiveTrail.cs
 ------------------------------------------------------------------------------
-namespace ProjectName.Core.Interfaces
+
+// File: ProjectName.Core/Interfaces/ICognitiveTrail.cs
+namespace ProjectName.Core.Interfaces;
+
+/// <summary>
+/// I AM the memory of the Strange Loop.
+/// I record every phase transition and thought artifact.
+/// </summary>
+public interface ICognitiveTrail
 {
-    public interface ICognitiveTrail
-    {
-        void Record(string phase, object data);
-        string GetHistory();
-    }
+    /// <summary>
+    /// Records a cognitive event or thought during a specific phase.
+    /// </summary>
+    /// <param name="phase">The phase name (e.g., "Plan", "Make", "Check").</param>
+    /// <param name="data">The data or artifact to record.</param>
+    void Record(string phase, object data);
+
+    /// <summary>
+    /// Retrieves the complete history of cognitive events.
+    /// </summary>
+    /// <returns>A JSON string representing the cognitive trail history.</returns>
+    string GetHistory();
+
+    /// <summary>
+    /// Clears all recorded cognitive history.
+    /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    Task ClearAsync();
 }
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Core\Interfaces\IMcpToolExecutor.cs
+------------------------------------------------------------------------------
+
+// File: ProjectName.Core/Interfaces/IMcpToolExecutor.cs
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace ProjectName.Application.Interfaces;
+
+/// <summary>
+/// Executes MCP (Model Context Protocol) tools remotely.
+/// </summary>
+public interface IMcpToolExecutor
+{
+    /// <summary>
+    /// Executes an MCP tool with the specified arguments.
+    /// </summary>
+    /// <param name="toolName">The name of the tool to execute.</param>
+    /// <param name="arguments">The arguments to pass to the tool.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The execution result.</returns>
+    Task<McpExecutionResult> ExecuteAsync(
+        string toolName,
+        Dictionary<string, object> arguments,
+        CancellationToken ct = default);
+}
+
+/// <summary>
+/// Represents the result of an MCP tool execution.
+/// </summary>
+/// <param name="Success">Whether the execution was successful.</param>
+/// <param name="Output">The output from the tool execution.</param>
+/// <param name="Error">The error message if execution failed.</param>
+public record McpExecutionResult(bool Success, string Output, string? Error);
 
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\Interfaces\IPlanner.cs
 ------------------------------------------------------------------------------
+using System.Threading;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+
 namespace ProjectName.Core.Interfaces;
 
 /// <summary>
-/// Represents a single step in an execution plan
-/// </summary>
-public sealed record PlanStep(
-    int Order,
-    string Action,
-    string Tool,
-    string ArgumentsJson = "{}");
-
-/// <summary>
-/// Represents the complete plan with analysis and steps
-/// </summary>
-public sealed record PlanResult(
-    string Goal,
-    List<PlanStep> Steps,
-    string Analysis);
-
-/// <summary>
-/// Planning interface for PMCR-O Phase P (Plan)
+/// The contract for Phase P (Plan) and Phase C (Check).
+/// I ensure the LLM complies with the defined cognitive structure.
 /// </summary>
 public interface IPlanner
 {
     /// <summary>
-    /// Creates a structured plan from user intent using LLM reasoning
+    /// Phase P: Decomposes a messy intent into a monotonic sequence of steps.
     /// </summary>
+    /// <param name="intent">The user's intent or goal.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A plan result containing the goal and execution steps.</returns>
     Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default);
 
     /// <summary>
-    /// Validates the execution results against the original intent (Phase C)
+    /// Phase C: Audits the artifacts generated by the Body against the original intent.
     /// </summary>
+    /// <param name="intent">The original intent.</param>
+    /// <param name="executionLog">The execution log to validate.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>A validation result as JSON.</returns>
     Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Represents the result of creating a plan.
+/// </summary>
+public sealed record PlanResult
+{
+    /// <summary>
+    /// Gets the refined goal statement.
+    /// </summary>
+    public required string Goal { get; init; }
+
+    /// <summary>
+    /// Gets the reasoning or analysis behind the plan.
+    /// </summary>
+    public required string Analysis { get; init; }
+
+    /// <summary>
+    /// Gets the list of execution steps.
+    /// </summary>
+    public required IReadOnlyList<PlanStep> Steps { get; init; }
+}
+
+/// <summary>
+/// Represents a single step in an execution plan.
+/// </summary>
+public sealed record PlanStep
+{
+    /// <summary>
+    /// Gets the execution order of this step.
+    /// </summary>
+    public required int Order { get; init; }
+
+    /// <summary>
+    /// Gets a description of the action to perform.
+    /// </summary>
+    public required string Action { get; init; }
+
+    /// <summary>
+    /// Gets the tool to use for this step.
+    /// </summary>
+    public required string Tool { get; init; }
+
+    /// <summary>
+    /// Gets the tool arguments as a JSON string.
+    /// </summary>
+    public string ArgumentsJson { get; init; } = "{}";
+}
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Core\PlanModels.cs
+------------------------------------------------------------------------------
+// File: ProjectName.Core/PlanModels.cs
+using System;
+
+namespace ProjectName.Core;
+
+/// <summary>
+/// Represents a persistent cognitive trail entry in the database.
+/// </summary>
+public class ThoughtEntry
+{
+    /// <summary>
+    /// Gets or sets the unique identifier for this thought.
+    /// </summary>
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    /// <summary>
+    /// Gets or sets the timestamp when this thought was recorded.
+    /// </summary>
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Gets or sets the original intent or query.
+    /// </summary>
+    public string Intent { get; set; } = default!;
+
+    /// <summary>
+    /// Gets or sets the analysis or reasoning.
+    /// </summary>
+    public string Analysis { get; set; } = default!;
+
+    /// <summary>
+    /// Gets or sets the plan as a JSON string.
+    /// </summary>
+    public string PlanJson { get; set; } = default!;
 }
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\ProjectName.Core.csproj
 ------------------------------------------------------------------------------
 <Project Sdk="Microsoft.NET.Sdk">
-
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<NoWarn>$(NoWarn);NU1507;NU1605;CS1591</NoWarn>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 	</PropertyGroup>
-
-	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
-	</ItemGroup>
-
 </Project>
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Agents\PlannerAgent.cs
 ------------------------------------------------------------------------------
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
+using ProjectName.Core.Attributes;
 using ProjectName.Core.Interfaces;
+using System.Reflection;
 using System.Text.Json;
-using OllamaSharp;
-using OllamaSharp.Models.Chat;
-using OllamaSharp.Models;
 
 namespace ProjectName.Infrastructure.Agents;
 
 /// <summary>
-/// Planner Agent with NATIVE structured output support
-/// Uses JSON Schema validation for 99% success rate
+/// Production-ready Cognitive Planner using IChatClient (Microsoft.Extensions.AI)
+/// Works with OllamaSharp implementation
 /// </summary>
 public class PlannerAgent : IPlanner
 {
-    private readonly OllamaApiClient _ollama;
+    private readonly IChatClient _chatClient;
     private readonly ILogger<PlannerAgent> _logger;
-    private readonly string _modelName;
+    private readonly string _role;
+    private readonly string _expertise;
+    private readonly string _voice;
 
     public PlannerAgent(
-        IConfiguration config,
+        IChatClient chatClient,
         ILogger<PlannerAgent> logger)
     {
+        _chatClient = chatClient;
         _logger = logger;
 
-        var ollamaEndpoint = config["AgentSettings:OllamaEndpoint"] ?? "http://localhost:11434";
-        _modelName = config["AgentSettings:ModelName"] ?? "qwen2.5-coder:latest";
+        // Extract persona from assembly attributes
+        var persona = GetPersonaAttribute();
+        _role = persona?.Role ?? "PMCR-O Planner";
+        _expertise = persona?.Expertise ?? "General Orchestration";
+        _voice = persona?.Voice ?? "Analytical and Precise";
+    }
 
-        _ollama = new OllamaApiClient(ollamaEndpoint);
-
-        _logger.LogInformation("PlannerAgent initialized with structured output enabled");
+    private static AgentPersonaAttribute? GetPersonaAttribute()
+    {
+        return typeof(PlannerAgent).Assembly.GetCustomAttribute<AgentPersonaAttribute>();
     }
 
     public async Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default)
     {
-        if (_logger.IsEnabled(LogLevel.Information))
-        {
-            _logger.LogInformation("Creating plan for intent: {Intent}", intent);
-        }
+        _logger.LogInformation("🧠 Creating plan for intent: {Intent}", intent);
 
         try
         {
-            var systemPrompt = BuildAgentInstructions();
-            var userPrompt = BuildPlanningPrompt(intent);
-
-            var request = new ChatRequest
+            // Build chat history with system and user messages
+            var chatHistory = new List<ChatMessage>
             {
-                Model = _modelName,
-                Messages = new List<Message>
-                {
-                    new(ChatRole.System, systemPrompt),
-                    new(ChatRole.User, userPrompt)
-                },
-                Stream = false,
-                Options = new RequestOptions
-                {
-                    Temperature = 0.7f,
-                    NumPredict = 4096
-                },
-                Format = "json"
+                new(ChatRole.System, BuildCognitiveInstructions()),
+                new(ChatRole.User, BuildIntentPrompt(intent))
             };
 
-            ChatResponseStream? lastResponse = null;
-            await foreach (var response in _ollama.ChatAsync(request, ct))
-            {
-                lastResponse = response;
-            }
-
-            var responseContent = lastResponse?.Message?.Content ?? "{}";
-            var plan = ParseStructuredResponse(responseContent);
-
-            if (!ValidatePlanStructure(plan))
-            {
-                if (_logger.IsEnabled(LogLevel.Warning))
+            // Call the LLM with JSON format
+            var response = await _chatClient.GetResponseAsync(
+                chatHistory,
+                new ChatOptions
                 {
-                    _logger.LogWarning("Plan failed schema validation, using fallback");
-                }
-                return CreateFallbackPlan(intent, "Schema validation failed");
-            }
+                    ResponseFormat = ChatResponseFormat.Json
+                },
+                ct
+            );
 
-            return plan;
+            var content = response.Messages[^1].Text ?? "{}";
+
+            _logger.LogDebug("📝 Raw LLM Response: {Response}", content);
+
+            return ParseStructuredResponse(content);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating plan for intent: {Intent}", intent);
+            _logger.LogError(ex, "❌ Error creating plan");
             return CreateFallbackPlan(intent, ex.Message);
         }
     }
 
-    public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
+    private string BuildCognitiveInstructions()
     {
-        _logger.LogInformation("Validating execution outcome for intent: {Intent}", intent);
+        return $$"""
+        You are {{_role}}, an AI agent specialized in {{_expertise}}.
+        Your communication style is: {{_voice}}.
 
-        try
+        SYSTEM CONTEXT:
+        - Framework: PMCR-O (Plan-Make-Check-Reflect-Orchestrate)
+        - Environment: .NET 10 / Aspire / MCP
+        - Available MCP Tools:
+          * browser_navigate(url)
+          * browser_click(selector)
+          * browser_type(selector, text)
+          * browser_screenshot(path, fullPage)
+          * browser_extract(selector, format)
+          * browser_evaluate(script)
+
+        OUTPUT REQUIREMENTS:
+        1. Respond ONLY with valid JSON (no markdown, no preamble)
+        2. Include a "@thought" field with your reasoning
+        3. Break down tasks into atomic, executable steps
+        4. Use only the MCP tools listed above
+
+        JSON FORMAT:
         {
-            // FIX: Using $$""" to allow literal JSON braces { } while using {{ }} for interpolation
-            var prompt = $$"""
-            USER INTENT: {{intent}}
-            
-            EXECUTION LOG:
-            {{executionLog}}
-            
-            ACT AS THE AUDITOR (Phase C: Check).
-            Analyze the Execution Log. Did the tools successfully accomplish the User Intent?
-            
-            Respond ONLY with a JSON object in this format:
-            {
-                "success": true/false,
-                "reasoning": "Explain why it succeeded or failed based on the logs",
-                "correction": "If failed, what should be done next? (or null)"
-            }
-            """;
-
-            var request = new ChatRequest
-            {
-                Model = _modelName,
-                Messages = new List<Message> { new(ChatRole.User, prompt) },
-                Format = "json",
-                Stream = false
-            };
-
-            var responseContent = "";
-            await foreach (var chunk in _ollama.ChatAsync(request, ct))
-            {
-                responseContent = chunk.Message.Content;
-            }
-
-            return responseContent;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Validation failed");
-            return JsonSerializer.Serialize(new { success = false, reasoning = $"Validation Error: {ex.Message}" });
-        }
-    }
-
-    private static string BuildAgentInstructions()
-    {
-        return """
-        You are the PMCR-O Planner Agent (Phase P).
-        
-        YOUR CRITICAL DIRECTIVE:
-        Respond ONLY with valid JSON. No markdown, no explanations, ONLY JSON.
-        
-        REQUIRED JSON STRUCTURE:
-        {
-          "goal": "Clear one-sentence goal statement",
-          "analysis": "Your reasoning (2-3 sentences max)",
+          "@thought": "Your step-by-step reasoning in {{_voice}} style",
+          "goal": "Single-sentence refined goal",
           "steps": [
             {
               "order": 1,
-              "action": "What to do",
+              "action": "Description of what to do",
               "tool": "tool_name",
-              "arguments": {"key": "value"}
+              "arguments": { "key": "value" }
             }
           ]
         }
-        
-        AVAILABLE TOOLS (MCP):
-        1. browser_navigate(url: string)
-        2. browser_click(selector: string)
-        3. browser_type(selector: string, text: string)
-        4. browser_screenshot(path: string, fullPage: boolean)
-        5. browser_extract(selector: string)
-        6. browser_evaluate(script: string)
-        
-        RULES:
-        - Keep steps focused (3-7 typically)
-        - Choose appropriate tools
-        - NO markdown formatting
-        - NO text outside JSON
-        - ALL fields required
+
+        CRITICAL: Output MUST be valid JSON. No other text allowed.
         """;
     }
 
-    private static string BuildPlanningPrompt(string intent)
+    private string BuildIntentPrompt(string intent)
     {
-        return $"""
-        USER INTENT: {intent}
-        
-        Create an execution plan following the exact JSON structure.
-        Think through the steps, then output ONLY the JSON response.
+        return $$"""
+        USER INTENT: {{intent}}
+
+        TASK: Analyze this intent and create an execution plan.
+        - Think step-by-step in your {{_voice}} voice
+        - Output ONLY the JSON object (no explanation outside JSON)
+        - Ensure each step uses an available MCP tool
+        - Be specific with tool arguments (actual URLs, selectors, etc.)
         """;
     }
 
-    private static PlanResult ParseStructuredResponse(string json)
+    private PlanResult ParseStructuredResponse(string json)
     {
         try
         {
-            // Clean potential markdown
+            // Clean any markdown artifacts
             json = json.Replace("```json", "").Replace("```", "").Trim();
 
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                AllowTrailingCommas = true
-            };
-
-            using var doc = JsonDocument.Parse(json, new JsonDocumentOptions
-            {
-                AllowTrailingCommas = true,
-                CommentHandling = JsonCommentHandling.Skip
-            });
-
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
-            if (!root.TryGetProperty("goal", out var goalProp) ||
-                !root.TryGetProperty("analysis", out var analysisProp) ||
-                !root.TryGetProperty("steps", out var stepsProp))
-            {
-                throw new JsonException("Missing required fields");
-            }
+            // Extract thought/analysis
+            var thought = root.TryGetProperty("@thought", out var t) ? t.GetString() :
+                          root.TryGetProperty("thought", out t) ? t.GetString() :
+                          root.TryGetProperty("analysis", out var a) ? a.GetString() :
+                          "No reasoning provided.";
 
-            var goal = goalProp.GetString() ?? "";
-            var analysis = analysisProp.GetString() ?? "";
+            var goal = root.GetProperty("goal").GetString() ?? "No goal defined";
 
             var steps = new List<PlanStep>();
-            foreach (var stepElement in stepsProp.EnumerateArray())
+            if (root.TryGetProperty("steps", out var stepsProp))
             {
-                var order = stepElement.GetProperty("order").GetInt32();
-                var action = stepElement.GetProperty("action").GetString() ?? "";
-                var tool = stepElement.GetProperty("tool").GetString() ?? "";
+                foreach (var stepElement in stepsProp.EnumerateArray())
+                {
+                    var order = stepElement.GetProperty("order").GetInt32();
+                    var action = stepElement.GetProperty("action").GetString() ?? "";
+                    var tool = stepElement.GetProperty("tool").GetString() ?? "";
 
-                var argsJson = stepElement.TryGetProperty("arguments", out var argsElement)
-                    ? argsElement.GetRawText()
-                    : "{}";
+                    var argsJson = stepElement.TryGetProperty("arguments", out var argsElement)
+                        ? argsElement.GetRawText()
+                        : "{}";
 
-                steps.Add(new PlanStep(order, action, tool, argsJson));
+                    steps.Add(new PlanStep
+                    {
+                        Order = order,
+                        Action = action,
+                        Tool = tool,
+                        ArgumentsJson = argsJson
+                    });
+                }
             }
 
-            steps = steps.OrderBy(s => s.Order).ToList();
-            return new PlanResult(goal, steps, analysis);
-        }
-        catch
-        {
-            throw;
-        }
-    }
+            _logger.LogInformation("✅ Parsed {StepCount} execution steps", steps.Count);
 
-    private static bool ValidatePlanStructure(PlanResult plan)
-    {
-        return !string.IsNullOrWhiteSpace(plan.Goal) &&
-               !string.IsNullOrWhiteSpace(plan.Analysis) &&
-               plan.Steps.Count > 0;
-    }
-
-    private PlanResult CreateFallbackPlan(string intent, string reason)
-    {
-        if (_logger.IsEnabled(LogLevel.Warning))
-        {
-            _logger.LogWarning("Creating fallback plan - Reason: {Reason}", reason);
-        }
-
-        return new PlanResult(
-            Goal: intent,
-            Steps: new List<PlanStep>
+            return new PlanResult
             {
-                new(
-                    Order: 1,
-                    Action: "Manual execution required due to planning failure",
-                    Tool: "manual_intervention",
-                    ArgumentsJson: JsonSerializer.Serialize(new { reason }))
+                Goal = goal,
+                Steps = steps,
+                Analysis = thought ?? ""
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse LLM output. Raw JSON: {Json}", json);
+            throw new JsonException($"Failed to parse Agent output: {ex.Message}. Raw JSON: {json}");
+        }
+    }
+
+    private static PlanResult CreateFallbackPlan(string intent, string reason)
+    {
+        return new PlanResult
+        {
+            Goal = intent,
+            Steps = [],
+            Analysis = $"⚠️ Planning Failed: {reason}. Manual Intervention Required."
+        };
+    }
+
+    public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
+    {
+        var prompt = $$"""
+        ROLE: Auditor and Compliance Verifier
+        TASK: Validate execution results against original intent
+        
+        ORIGINAL INTENT: {{intent}}
+        
+        EXECUTION LOG:
+        {{executionLog}}
+        
+        OUTPUT FORMAT (JSON only):
+        {
+          "success": true/false,
+          "reasoning": "Detailed explanation of validation decision"
+        }
+        """;
+
+        var chatHistory = new List<ChatMessage>
+        {
+            new(ChatRole.User, prompt)
+        };
+
+        var response = await _chatClient.GetResponseAsync(
+            chatHistory,
+            new ChatOptions
+            {
+                ResponseFormat = ChatResponseFormat.Json
             },
-            Analysis: $"Automated planning failed: {reason}. Manual review needed.");
+            ct
+        );
+
+        return response.Messages[^1].Text ?? "{}";
     }
 }
 
@@ -1202,13 +1385,12 @@ FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Data\CognitiveDbConte
 ------------------------------------------------------------------------------
 using Microsoft.EntityFrameworkCore;
 using ProjectName.Core.Entities;
+using System.Collections.Generic;
 
 namespace ProjectName.Infrastructure.Data;
 
-public class CognitiveDbContext : DbContext
+public class CognitiveDbContext(DbContextOptions<CognitiveDbContext> options) : DbContext(options)
 {
-    public CognitiveDbContext(DbContextOptions<CognitiveDbContext> options) : base(options) { }
-
     public DbSet<CognitiveLog> Logs { get; set; }
 }
 
@@ -1289,7 +1471,7 @@ public static class McpClientConfiguration
                 ?? "http://localhost:5159";
 
             client.BaseAddress = new Uri(endpoint);
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = TimeSpan.FromMinutes(5);
         });
 
         return services;
@@ -1432,26 +1614,30 @@ using System.Text.Json;
 
 namespace ProjectName.Infrastructure.Services;
 
-public class InMemoryCognitiveTrail : ICognitiveTrail
+public class InMemoryCognitiveTrail(ILogger<InMemoryCognitiveTrail> logger) : ICognitiveTrail
 {
-    private readonly ConcurrentBag<object> _history = new();
-    private readonly ILogger<InMemoryCognitiveTrail> _logger;
-
-    public InMemoryCognitiveTrail(ILogger<InMemoryCognitiveTrail> logger)
-    {
-        _logger = logger;
-    }
+    private readonly ConcurrentBag<object> _history = [];
 
     public void Record(string phase, object data)
     {
         var entry = new { Timestamp = DateTime.UtcNow, Phase = phase, Data = data };
         _history.Add(entry);
-        _logger.LogInformation("TRAIL [{Phase}]: {Json}", phase, JsonSerializer.Serialize(data));
+
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("TRAIL [{Phase}]: {Json}", phase, JsonSerializer.Serialize(data));
+        }
     }
 
     public string GetHistory()
     {
         return JsonSerializer.Serialize(_history);
+    }
+
+    public Task ClearAsync()
+    {
+        _history.Clear();
+        return Task.CompletedTask;
     }
 }
 
@@ -1465,30 +1651,30 @@ using ProjectName.Infrastructure.Data;
 
 namespace ProjectName.Infrastructure.Services;
 
-public class PersistentCognitiveTrail : ICognitiveTrail
+public class PersistentCognitiveTrail(CognitiveDbContext db, ILogger<PersistentCognitiveTrail> logger) : ICognitiveTrail
 {
-    private readonly CognitiveDbContext _db;
-    private readonly ILogger<PersistentCognitiveTrail> _logger;
-
-    public PersistentCognitiveTrail(CognitiveDbContext db, ILogger<PersistentCognitiveTrail> logger)
-    {
-        _db = db;
-        _logger = logger;
-    }
-
     public void Record(string phase, object data)
     {
         var json = JsonSerializer.Serialize(data);
-        _db.Logs.Add(new CognitiveLog { Phase = phase, DataJson = json });
-        _db.SaveChanges(); // Synchronous for simplicity in this cycle
-        _logger.LogInformation("DB TRAIL [{Phase}]: {Json}", phase, json);
+        db.Logs.Add(new CognitiveLog { Phase = phase, DataJson = json });
+        db.SaveChanges();
+
+        if (logger.IsEnabled(LogLevel.Information))
+        {
+            logger.LogInformation("DB TRAIL [{Phase}]: {Json}", phase, json);
+        }
     }
 
     public string GetHistory()
     {
-        // Simple dump of last 50 logs
-        var logs = _db.Logs.OrderByDescending(x => x.Timestamp).Take(50).ToList();
+        var logs = db.Logs.OrderByDescending(x => x.Timestamp).Take(50).ToList();
         return JsonSerializer.Serialize(logs);
+    }
+
+    public async Task ClearAsync()
+    {
+        db.Logs.RemoveRange(db.Logs);
+        await db.SaveChangesAsync();
     }
 }
 
@@ -1697,14 +1883,21 @@ public class DefaultPlanner : IPlanner
 {
     public Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default)
     {
-        // Simple fallback plan
+        // Simple fallback plan using required init syntax
         var steps = new List<PlanStep>
         {
-            new(1, "Analyze Input", "manual_intervention", "{}"),
-            new(2, "Reflect", "manual_intervention", "{}")
+            new() { Order = 1, Action = "Analyze Input", Tool = "manual_intervention", ArgumentsJson = "{}" },
+            new() { Order = 2, Action = "Reflect", Tool = "manual_intervention", ArgumentsJson = "{}" }
         };
 
-        return Task.FromResult(new PlanResult(intent, steps, "Default planner execution"));
+        var result = new PlanResult
+        {
+            Goal = intent,
+            Steps = steps,
+            Analysis = "Default planner execution"
+        };
+
+        return Task.FromResult(result);
     }
 
     public Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
@@ -1719,54 +1912,52 @@ public class DefaultPlanner : IPlanner
 
         return Task.FromResult(JsonSerializer.Serialize(validation));
     }
-
-    // Legacy method kept if needed, or can be removed if not part of interface
-    public static Task<string> PlanBareMinimum(string seedIntent)
-    {
-        var plan = new
-        {
-            Steps = new[] { "Analyze Input", "Generate Artifact", "Reflect" },
-            Target = seedIntent
-        };
-        return Task.FromResult(JsonSerializer.Serialize(plan));
-    }
 }
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj
 ------------------------------------------------------------------------------
 <Project Sdk="Microsoft.NET.Sdk">
-
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<NoWarn>$(NoWarn);NU1507;NU1605</NoWarn>
 	</PropertyGroup>
-
+	<PropertyGroup>
+		<AgentRole>DEFAULT_AGENT_ROLE</AgentRole>
+		<AgentExpertise>DEFAULT_AGENT_EXPERTISE</AgentExpertise>
+		<AgentVoice>DEFAULT_AGENT_VOICE</AgentVoice>
+	</PropertyGroup>
 	<ItemGroup>
+		<AssemblyAttribute Include="ProjectName.Core.Attributes.AgentPersonaAttribute">
+			<_Parameter1>$(AgentRole)</_Parameter1>
+			<_Parameter2>$(AgentExpertise)</_Parameter2>
+			<_Parameter3>$(AgentVoice)</_Parameter3>
+		</AssemblyAttribute>
+	</ItemGroup>
+	<ItemGroup>
+		<!-- Microsoft.Extensions.AI for IChatClient abstraction -->
+		<PackageReference Include="Microsoft.Extensions.AI" />
+
+		<!-- Database -->
+		<PackageReference Include="Microsoft.EntityFrameworkCore" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" PrivateAssets="all" />
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+
 		<!-- MCP Protocol -->
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools">
-		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		  <PrivateAssets>all</PrivateAssets>
-		</PackageReference>
 		<PackageReference Include="ModelContextProtocol" />
 		<PackageReference Include="ModelContextProtocol.Core" />
 
-		<!-- AI and Agent Framework -->
-		<PackageReference Include="Microsoft.Extensions.AI" />
-		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
-		<PackageReference Include="Microsoft.Agents.AI" />
-		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
-		<PackageReference Include="OllamaSharp" />
-
-		<!-- HTTP Client Extensions - REQUIRED for AddHttpClient -->
+		<!-- Extensions -->
 		<PackageReference Include="Microsoft.Extensions.Http" />
+		<PackageReference Include="Microsoft.Extensions.Configuration" />
+		<PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
 	</ItemGroup>
-
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
 	</ItemGroup>
-
 </Project>
 
 ------------------------------------------------------------------------------
@@ -3164,8 +3355,8 @@ FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Properties\launchSe
 FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Services\GrpcPlannerGateway.cs
 ------------------------------------------------------------------------------
 using ProjectName.Core.Interfaces;
-using ProjectName.PlanerService; // Namespace from the gRPC Protos
-using System.Text.Json;
+using ProjectName.PlannerService;
+using System.Numerics;
 
 namespace ProjectName.OrchestrationApi.Services;
 
@@ -3193,14 +3384,20 @@ public class GrpcPlannerGateway : IPlanner
             throw new Exception($"Planner service failed: {response.ErrorMessage}");
         }
 
-        var steps = response.Steps.Select(s => new PlanStep(
-            s.Order,
-            s.Action,
-            s.Tool,
-            s.ArgumentsJson
-        )).ToList();
+        var steps = response.Steps.Select(s => new PlanStep
+        {
+            Order = s.Order,
+            Action = s.Action,
+            Tool = s.Tool,
+            ArgumentsJson = s.ArgumentsJson
+        }).ToList();
 
-        return new PlanResult(response.Goal, steps, response.Analysis);
+        return new PlanResult
+        {
+            Goal = response.Goal,
+            Steps = steps,
+            Analysis = response.Analysis
+        };
     }
 
     public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
@@ -3292,15 +3489,16 @@ ENTRYPOINT ["dotnet", "ProjectName.OrchestrationApi.dll"]
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Program.cs
 ------------------------------------------------------------------------------
+using Microsoft.Extensions.AI;
 using Microsoft.OpenApi;
-using ProjectName.Application;          // For CognitiveOrchestrator
-using ProjectName.Core.Entities;        // For AgentIdentity
-using ProjectName.Core.Interfaces;      // For IPlanner, ICognitiveTrail
+using ProjectName.Application;
+using ProjectName.Core.Entities;
+using ProjectName.Core.Interfaces;
 using ProjectName.Infrastructure.Data;
-using ProjectName.Infrastructure.MCP;        // For McpClientConfiguration
-using ProjectName.Infrastructure.Services;   // For InMemoryCognitiveTrail
-using ProjectName.OrchestrationApi.Services; // For GrpcPlannerGateway
-using ProjectName.PlanerService;
+using ProjectName.Infrastructure.MCP;
+using ProjectName.Infrastructure.Services;
+using ProjectName.OrchestrationApi.Services;
+using ProjectName.PlannerService;
 using ProjectName.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -3335,30 +3533,28 @@ builder.Services.AddGrpcClient<Planner.PlannerClient>(options =>
     }
     return handler;
 })
-// !!! NEW: OVERRIDE RESILIENCE FOR AI WORKLOADS !!!
 .AddStandardResilienceHandler(options =>
 {
-    // Give the AI 5 minutes to think before giving up
-    options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(5);
-    options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(5);
-
-    // Adjust Circuit Breaker to be patient
-    options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(10);
+    // Allow 10 minutes total for AI operations
+    options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(10);
+    options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(10);
+    options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(20);
 });
+
 // 2. REGISTER MCP CLIENT (Connects to McpServer)
-// This extension method (from Infrastructure) sets up HttpClient for IMcpToolExecutor
 builder.Services.AddMcpClient(builder.Configuration);
 
 // 3. REGISTER CORE DEPENDENCIES
-// The "Brain" Proxy
 builder.Services.AddScoped<IPlanner, GrpcPlannerGateway>();
 builder.Services.AddScoped<ICognitiveTrail, PersistentCognitiveTrail>();
 
-// The "Memory"
-builder.Services.AddSingleton<ICognitiveTrail, InMemoryCognitiveTrail>();
-
-// The "Ego"
-builder.Services.AddSingleton(new AgentIdentity("Orchestrator", "Executive", "PMCR-O"));
+// The "Ego" - Fixed with Voice parameter
+builder.Services.AddSingleton(new AgentIdentity(
+    Name: "Orchestrator",
+    Role: "Executive",
+    Philosophy: "PMCR-O",
+    Voice: "Analytical"
+));
 
 // 4. REGISTER THE ORCHESTRATOR
 builder.Services.AddScoped<CognitiveOrchestrator>();
@@ -3367,12 +3563,31 @@ builder.Services.AddScoped<CognitiveOrchestrator>();
 builder.AddServiceDefaults();
 
 var app = builder.Build();
+
+// Initialize database
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<CognitiveDbContext>();
-    db.Database.EnsureCreated();
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    var context = services.GetRequiredService<CognitiveDbContext>();
+
+    try
+    {
+        logger.LogInformation("🧠 Initializing Cognitive Memory (Database)...");
+        await context.Database.EnsureCreatedAsync();
+    }
+    catch (Npgsql.PostgresException ex) when (ex.SqlState == "42P04")
+    {
+        logger.LogWarning("⚠️ Database race condition detected. Retrying to ensure Schema...");
+        await context.Database.EnsureCreatedAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "❌ CRITICAL: Database initialization failed.");
+        throw;
+    }
 }
-// ... rest of the pipeline (Swagger, HTTPS, MapControllers, etc.) ...
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -3406,7 +3621,7 @@ FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\ProjectName.Orchest
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Protobuf Include="..\ProjectName.PlanerService\Protos\planner.proto" GrpcServices="Client" />
+		<Protobuf Include="..\ProjectName.PlannerService\Protos\planner.proto" GrpcServices="Client" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -3425,6 +3640,7 @@ FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\ProjectName.Orchest
 
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Application\ProjectName.Application.csproj" />
+		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
 		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 		<ProjectReference Include="..\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj" />
 	</ItemGroup>
@@ -3450,7 +3666,7 @@ namespace ProjectName.OrchestrationApi
 
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\Properties\launchSettings.json
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\Properties\launchSettings.json
 ------------------------------------------------------------------------------
 {
   "profiles": {
@@ -3485,13 +3701,70 @@ FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\Properties\launchSetti
 }
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\Services\PlannerGrpcService.cs
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\Protos\planner.proto
+------------------------------------------------------------------------------
+syntax = "proto3";
+
+option csharp_namespace = "ProjectName.PlannerService";
+
+package planner;
+
+service Planner {
+  rpc CreatePlan (PlanRequest) returns (PlanResponse);
+  rpc ValidateOutcome (ValidationRequest) returns (ValidationResponse);
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message PlanRequest {
+  string intent = 1;
+}
+
+message PlanResponse {
+  bool success = 1;
+  string goal = 2;
+  repeated PlanStepMessage steps = 3;
+  string analysis = 4;
+  string errorMessage = 5;
+}
+
+message PlanStepMessage {
+  int32 order = 1;
+  string action = 2;
+  string tool = 3;
+  string argumentsJson = 4;
+}
+
+message ValidationRequest {
+  string intent = 1;
+  string executionLog = 2;
+}
+
+message ValidationResponse {
+  bool success = 1;
+  string validationJson = 2;
+  string errorMessage = 3;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  ServingStatus status = 1;
+  string message = 2;
+}
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\Services\PlannerGrpcService.cs
 ------------------------------------------------------------------------------
 using Grpc.Core;
 using ProjectName.Core.Interfaces;
 using System.Diagnostics;
 
-namespace ProjectName.PlanerService.Services;
+namespace ProjectName.PlannerService.Services;
 
 public class PlannerGrpcService : Planner.PlannerBase
 {
@@ -3582,7 +3855,7 @@ public class PlannerGrpcService : Planner.PlannerBase
 }
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\appsettings.Development.json
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\appsettings.Development.json
 ------------------------------------------------------------------------------
 {
   "Logging": {
@@ -3595,7 +3868,7 @@ FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\appsettings.Developmen
 
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\appsettings.json
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\appsettings.json
 ------------------------------------------------------------------------------
 {
   "Logging": {
@@ -3617,7 +3890,7 @@ FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\appsettings.json
 }
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\Dockerfile
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\Dockerfile
 ------------------------------------------------------------------------------
 # See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
@@ -3655,89 +3928,74 @@ COPY --from=publish /app/publish .
 ENTRYPOINT ["dotnet", "ProjectName.PlanerService.dll"]
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\Program.cs
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\Program.cs
 ------------------------------------------------------------------------------
-using ProjectName.Core.Interfaces;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
 using ProjectName.Infrastructure.Agents;
-using ProjectName.Infrastructure.MCP;
-using ProjectName.PlanerService.Services;
+using ProjectName.PlannerService.Services;
 using ProjectName.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add gRPC services
-builder.Services.AddGrpc(options =>
-{
-    options.MaxReceiveMessageSize = 16 * 1024 * 1024; // 16 MB
-    options.MaxSendMessageSize = 16 * 1024 * 1024;
-    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
-});
-
-// Add MCP Client
-builder.Services.AddMcpClient(builder.Configuration);
-
-// Register PlannerAgent as IPlanner
-builder.Services.AddSingleton<IPlanner, PlannerAgent>();
-
-// Add logging
-builder.Services.AddLogging(logging =>
-{
-    logging.AddConsole();
-    logging.AddDebug();
-    if (builder.Environment.IsDevelopment())
-    {
-        logging.SetMinimumLevel(LogLevel.Debug);
-    }
-});
-
-// Add Aspire service defaults (telemetry, health checks, service discovery)
 builder.AddServiceDefaults();
+builder.Services.AddGrpc();
+
+// Get configuration
+var ollamaEndpoint = builder.Configuration["AgentSettings:OllamaEndpoint"] ?? "http://localhost:11434";
+var modelName = builder.Configuration["AgentSettings:ModelName"] ?? "qwen2.5-coder:latest";
+
+// Register OllamaSharp as IChatClient (implements Microsoft.Extensions.AI)
+builder.Services.AddSingleton<IChatClient>(sp =>
+{
+    var ollamaClient = new OllamaApiClient(
+        new Uri(ollamaEndpoint),
+        modelName
+    );
+
+    // OllamaApiClient implements IChatClient directly
+    return ollamaClient;
+});
+
+// Register PlannerAgent as the Brain implementation
+builder.Services.AddSingleton<ProjectName.Core.Interfaces.IPlanner, PlannerAgent>();
 
 var app = builder.Build();
 
-// Configure gRPC endpoints
 app.MapGrpcService<PlannerGrpcService>();
-
-// Health check endpoint
-app.MapGet("/", () =>
-    "PMCR-O Planner gRPC Service. " +
-    "Communication must be made through a gRPC client. " +
-    "See https://go.microsoft.com/fwlink/?linkid=2086909");
-
-// Map default endpoints (health checks from Aspire)
 app.MapDefaultEndpoints();
 
 app.Run();
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\ProjectName.PlanerService.csproj
+FILE: T:\agents\ProjectName\src\ProjectName.PlannerService\ProjectName.PlannerService.csproj
 ------------------------------------------------------------------------------
 <Project Sdk="Microsoft.NET.Sdk.Web">
-
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>96d01d32-0ed9-4755-a32e-d303666266ce</UserSecretsId>
 		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-		<DockerfileContext>..\..</DockerfileContext>
 	</PropertyGroup>
-
 	<ItemGroup>
 		<Protobuf Include="Protos\planner.proto" GrpcServices="Server" />
 	</ItemGroup>
-
 	<ItemGroup>
+		<!-- gRPC -->
 		<PackageReference Include="Grpc.AspNetCore" />
+
+		<!-- OllamaSharp for LLM -->
+		<PackageReference Include="OllamaSharp" />
+
+		<!-- Docker Support -->
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
 	</ItemGroup>
-
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
 		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 		<ProjectReference Include="..\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj" />
 	</ItemGroup>
-
 </Project>
 
 ------------------------------------------------------------------------------
@@ -3901,15 +4159,103 @@ FILE: T:\agents\ProjectName\src\ProjectName.ServiceDefaults\ProjectName.ServiceD
 </Project>
 
 ------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\Directory.Build.props
+------------------------------------------------------------------------------
+<Project>
+
+</Project>
+
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\Directory.Build.targets
+------------------------------------------------------------------------------
+<Project>
+	
+</Project>
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\Directory.Packages.props
+------------------------------------------------------------------------------
+<Project>
+	<PropertyGroup>
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+		<CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Aspire 13.1.0 -->
+		<PackageVersion Include="Aspire.Hosting.AppHost" Version="13.1.0" />
+		<PackageVersion Include="Aspire.Hosting.Redis" Version="13.1.0" />
+		<PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.1.0" />
+		<PackageVersion Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.1.0" />
+
+		<!-- Microsoft.Extensions.AI (Abstractions) -->
+		<PackageVersion Include="Microsoft.Extensions.AI" Version="10.1.1" />
+		
+		<!-- LLM - OllamaSharp (implements IChatClient) -->
+		<PackageVersion Include="OllamaSharp" Version="5.4.12" />
+
+		<!-- Microsoft Extensions 10.0.1 -->
+		<PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+		<PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.1" />
+		<PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
+		<PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
+		<PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.1" />
+		<PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.1" />
+
+		<!-- ASP.NET Core 10 -->
+		<PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
+
+		<!-- MCP Protocol -->
+		<PackageVersion Include="ModelContextProtocol" Version="0.5.0-preview.1" />
+		<PackageVersion Include="ModelContextProtocol.Core" Version="0.5.0-preview.1" />
+
+		<!-- OpenTelemetry 1.14.0 -->
+		<PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
+		<PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
+		<PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
+		<PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
+		<PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
+
+		<!-- gRPC & Protobuf -->
+		<PackageVersion Include="Grpc.AspNetCore" Version="2.76.0" />
+		<PackageVersion Include="Grpc.Tools" Version="2.76.0" />
+		<PackageVersion Include="Grpc.Net.Client" Version="2.76.0" />
+		<PackageVersion Include="Grpc.Net.ClientFactory" Version="2.76.0" />
+		<PackageVersion Include="Google.Protobuf" Version="3.33.4" />
+
+		<!-- Swagger/OpenAPI -->
+		<PackageVersion Include="Swashbuckle.AspNetCore" Version="10.1.0" />
+
+		<!-- Entity Framework Core 10 -->
+		<PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.1" />
+		<PackageVersion Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.1" />
+		<PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+
+		<!-- Playwright -->
+		<PackageVersion Include="Microsoft.Playwright" Version="1.57.0" />
+
+		<!-- Development & Testing -->
+		<PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.23.0-preview.4" />
+	</ItemGroup>
+</Project>
+
+------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\nuget.config
 ------------------------------------------------------------------------------
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
 	<packageSources>
 		<clear />
-		<add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+		<add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
 		<add key="Telerik" value="https://nuget.telerik.com/v3/index.json" />
 	</packageSources>
+
+	<!-- 
+		SOURCE MAPPING:
+		Prevents package hijacking and source ambiguity.
+	-->
 	<packageSourceMapping>
 		<packageSource key="nuget.org">
 			<package pattern="*" />
@@ -3919,7 +4265,163 @@ FILE: T:\agents\ProjectName\nuget.config
 			<package pattern="Kendo.*" />
 		</packageSource>
 	</packageSourceMapping>
+
+	<!-- 
+		REMOVED LOCAL PACKAGES FOLDER
+		This was causing path length issues on Windows.
+		Packages now use global cache: %USERPROFILE%\.nuget\packages
+	-->
+
 </configuration>
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\ProjectName.sln
+------------------------------------------------------------------------------
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11312.210
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.AppHost", "src\ProjectName.AppHost\ProjectName.AppHost.csproj", "{C5234D3D-E468-4276-B130-46EE16A01640}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.McpServer", "src\ProjectName.McpServer\ProjectName.McpServer.csproj", "{185DFFC4-F29C-4408-8166-B8424ECB074D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.Core", "src\ProjectName.Core\ProjectName.Core.csproj", "{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.Infrastructure", "src\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj", "{DC839416-E123-4D11-B136-735E6E3D141E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.ServiceDefaults", "src\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj", "{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.OrchestrationApi", "src\ProjectName.OrchestrationApi\ProjectName.OrchestrationApi.csproj", "{DF5CBE0E-6707-4947-A986-3526E40E52F2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.Application", "src\ProjectName.Application\ProjectName.Application.csproj", "{6CBDEC11-506A-41F6-91F3-2F4C22800192}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ProjectName.PlannerService", "src\ProjectName.PlannerService\ProjectName.PlannerService.csproj", "{137722EC-2258-56BB-AAB8-33A20BD6AD4D}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Debug|x64.Build.0 = Debug|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Debug|x86.Build.0 = Debug|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Release|x64.ActiveCfg = Release|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Release|x64.Build.0 = Release|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Release|x86.ActiveCfg = Release|Any CPU
+		{C5234D3D-E468-4276-B130-46EE16A01640}.Release|x86.Build.0 = Release|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Debug|x64.Build.0 = Debug|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Debug|x86.Build.0 = Debug|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Release|x64.ActiveCfg = Release|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Release|x64.Build.0 = Release|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Release|x86.ActiveCfg = Release|Any CPU
+		{185DFFC4-F29C-4408-8166-B8424ECB074D}.Release|x86.Build.0 = Release|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Debug|x64.Build.0 = Debug|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Debug|x86.Build.0 = Debug|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Release|x64.ActiveCfg = Release|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Release|x64.Build.0 = Release|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Release|x86.ActiveCfg = Release|Any CPU
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161}.Release|x86.Build.0 = Release|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Debug|x64.Build.0 = Debug|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Debug|x86.Build.0 = Debug|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Release|x64.ActiveCfg = Release|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Release|x64.Build.0 = Release|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Release|x86.ActiveCfg = Release|Any CPU
+		{DC839416-E123-4D11-B136-735E6E3D141E}.Release|x86.Build.0 = Release|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Debug|x64.Build.0 = Debug|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Debug|x86.Build.0 = Debug|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Release|x64.ActiveCfg = Release|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Release|x64.Build.0 = Release|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Release|x86.ActiveCfg = Release|Any CPU
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA}.Release|x86.Build.0 = Release|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Debug|x64.Build.0 = Debug|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Debug|x86.Build.0 = Debug|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Release|x64.ActiveCfg = Release|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Release|x64.Build.0 = Release|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Release|x86.ActiveCfg = Release|Any CPU
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2}.Release|x86.Build.0 = Release|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Debug|x64.Build.0 = Debug|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Debug|x86.Build.0 = Debug|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Release|x64.ActiveCfg = Release|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Release|x64.Build.0 = Release|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Release|x86.ActiveCfg = Release|Any CPU
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192}.Release|x86.Build.0 = Release|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Debug|x64.Build.0 = Debug|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Debug|x86.Build.0 = Debug|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Release|x64.ActiveCfg = Release|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Release|x64.Build.0 = Release|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Release|x86.ActiveCfg = Release|Any CPU
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{C5234D3D-E468-4276-B130-46EE16A01640} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{185DFFC4-F29C-4408-8166-B8424ECB074D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{EEC0FF8F-E4BA-4AC3-A451-3661D45CA161} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{DC839416-E123-4D11-B136-735E6E3D141E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{59BE09D2-BE58-4942-BC69-6EBD7F306FAA} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{DF5CBE0E-6707-4947-A986-3526E40E52F2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{6CBDEC11-506A-41F6-91F3-2F4C22800192} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{137722EC-2258-56BB-AAB8-33A20BD6AD4D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+	EndGlobalSection
+EndGlobal
+
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\README.md

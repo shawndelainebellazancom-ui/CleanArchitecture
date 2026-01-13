@@ -1,12 +1,11 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ProjectName.Core.Entities;
+using System.Collections.Generic;
 
 namespace ProjectName.Infrastructure.Data;
 
-public class CognitiveDbContext : DbContext
+public class CognitiveDbContext(DbContextOptions<CognitiveDbContext> options) : DbContext(options)
 {
-    public CognitiveDbContext(DbContextOptions<CognitiveDbContext> options) : base(options) { }
-
     public DbSet<CognitiveLog> Logs { get; set; }
 }
 
