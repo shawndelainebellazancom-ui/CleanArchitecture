@@ -1,5 +1,3 @@
-using Aspire.Hosting;
-
 var builder = DistributedApplication.CreateBuilder(args);
 
 // ============================================================================
@@ -25,7 +23,7 @@ var mcpServer = builder.AddProject<Projects.ProjectName_McpServer>("mcp-server")
 // ============================================================================
 
 // gRPC Planner Service (hosts PlannerAgent)
-var plannerService = builder.AddProject<Projects.ProjectName_PlanerService>("planner-service")
+var plannerService = builder.AddProject<Projects.ProjectName_PlannerService>("planner-service")
     .WithReference(redis)
     .WithReference(mcpServer);  // ✅ Service discovery for MCP
 

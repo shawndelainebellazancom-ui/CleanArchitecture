@@ -10,10 +10,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Protobuf Include="..\ProjectName.PlanerService\Protos\planner.proto" GrpcServices="Client" />
+		<Protobuf Include="..\ProjectName.PlannerService\Protos\planner.proto" GrpcServices="Client" />
 	</ItemGroup>
 
 	<ItemGroup>
+
+		<PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+
 		<PackageReference Include="Grpc.AspNetCore" />
 		<PackageReference Include="Grpc.Tools" PrivateAssets="All" />
 		<PackageReference Include="Google.Protobuf" />
@@ -25,6 +28,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\ProjectName.Application\ProjectName.Application.csproj" />
+		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 		<ProjectReference Include="..\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj" />
 	</ItemGroup>
 

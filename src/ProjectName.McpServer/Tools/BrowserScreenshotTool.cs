@@ -1,5 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-using ProjectName.McpServer.Services;
+﻿using ProjectName.McpServer.Services;
 
 namespace ProjectName.McpServer.Tools;
 

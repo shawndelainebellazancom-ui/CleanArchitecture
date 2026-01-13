@@ -1,177 +1,76 @@
-using Grpc.Net.Client;
 using Microsoft.AspNetCore.Mvc;
-using ProjectName.PlanerService;
+using ProjectName.Application;
 using System.ComponentModel.DataAnnotations;
 
 namespace ProjectName.OrchestrationApi.Controllers;
 
 /// <summary>
 /// REST API Gateway for PMCR-O Orchestration
-/// Exposes HTTP endpoints that internally call gRPC services
+/// Acts as the Nervous System trigger, invoking the Cognitive Orchestrator
+/// to execute the full Plan-Make-Check-Reflect loop.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class OrchestrationController : ControllerBase
 {
-    private readonly Planner.PlannerClient _plannerClient;
+    private readonly CognitiveOrchestrator _orchestrator;
     private readonly ILogger<OrchestrationController> _logger;
 
     public OrchestrationController(
-        Planner.PlannerClient plannerClient,
+        CognitiveOrchestrator orchestrator,
         ILogger<OrchestrationController> logger)
     {
-        _plannerClient = plannerClient;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
     /// <summary>
-    /// Creates an execution plan from user intent
+    /// Executes a full PMCR-O cognitive cycle based on user intent.
+    /// 1. PLANS using the Planner Service (Brain/LLM).
+    /// 2. MAKES using the MCP Server (Body/Tools).
+    /// 3. RECORDS the cognitive trail.
     /// </summary>
-    /// <param name="request">Intent request with user's goal</param>
-    /// <returns>Structured plan with steps and analysis</returns>
-    [HttpPost("plan")]
-    [ProducesResponseType(typeof(PlanResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> CreatePlan(
+    /// <param name="request">The seed intent (e.g., "Navigate to google.com...")</param>
+    /// <returns>A JSON report containing the Goal, Status, and Execution Log.</returns>
+    [HttpPost("execute")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ExecuteIntent(
         [FromBody] CreatePlanRequest request,
         CancellationToken ct)
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(new ErrorResponse
-            {
-                Error = "Invalid request",
-                Details = ModelState.Values
-                    .SelectMany(v => v.Errors)
-                    .Select(e => e.ErrorMessage)
-                    .ToList()
-            });
+            return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Received plan request: {Intent}", request.Intent);
+        _logger.LogInformation("Received execution request: {Intent}", request.Intent);
 
         try
         {
-            // Call gRPC Planner service
-            var grpcRequest = new PlanRequest
-            {
-                Intent = request.Intent
-            };
+            // Triggers the Full PMCR-O Loop (Plan -> Make -> Check -> Reflect)
+            // The Orchestrator handles the distributed coordination between gRPC Planner and HTTP MCP.
+            var resultJson = await _orchestrator.ProcessIntent(request.Intent, ct);
 
-            var grpcResponse = await _plannerClient.CreatePlanAsync(
-                grpcRequest,
-                cancellationToken: ct);
-
-            if (!grpcResponse.Success)
-            {
-                _logger.LogWarning("Plan creation failed: {Error}", grpcResponse.ErrorMessage);
-
-                return StatusCode(
-                    StatusCodes.Status500InternalServerError,
-                    new ErrorResponse
-                    {
-                        Error = "Plan creation failed",
-                        Details = new List<string> { grpcResponse.ErrorMessage }
-                    });
-            }
-
-            // Convert gRPC response to REST DTO
-            var response = new PlanResponseDto
-            {
-                Goal = grpcResponse.Goal,
-                Analysis = grpcResponse.Analysis,
-                Steps = grpcResponse.Steps.Select(s => new PlanStepDto
-                {
-                    Order = s.Order,
-                    Action = s.Action,
-                    Tool = s.Tool,
-                    Arguments = ParseArguments(s.ArgumentsJson)
-                }).ToList()
-            };
-
-            _logger.LogInformation(
-                "Plan created successfully - Steps: {Count}",
-                response.Steps.Count);
-
-            return Ok(response);
-        }
-        catch (Grpc.Core.RpcException ex)
-        {
-            _logger.LogError(ex, "gRPC error while creating plan");
-
-            return StatusCode(
-                StatusCodes.Status503ServiceUnavailable,
-                new ErrorResponse
-                {
-                    Error = "Planner service unavailable",
-                    Details = new List<string> { ex.Status.Detail }
-                });
+            // Return raw JSON because the Orchestrator returns a serialized string 
+            // containing dynamic tool outputs.
+            return Content(resultJson, "application/json");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error creating plan");
-
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                new ErrorResponse
-                {
-                    Error = "Internal server error",
-                    Details = new List<string> { ex.Message }
-                });
+            _logger.LogError(ex, "Orchestration failure");
+            return StatusCode(500, new { Error = ex.Message, StackTrace = ex.StackTrace });
         }
     }
 
     /// <summary>
-    /// Health check endpoint
+    /// Simple health check to verify API availability.
     /// </summary>
     [HttpGet("health")]
-    [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> HealthCheck(CancellationToken ct)
+    public IActionResult HealthCheck()
     {
-        try
-        {
-            var response = await _plannerClient.HealthCheckAsync(
-                new HealthCheckRequest(),
-                cancellationToken: ct);
-
-            return Ok(new HealthResponse
-            {
-                Status = response.Status.ToString(),
-                Message = response.Message,
-                Timestamp = DateTime.UtcNow
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Health check failed");
-
-            return StatusCode(
-                StatusCodes.Status503ServiceUnavailable,
-                new HealthResponse
-                {
-                    Status = "Unhealthy",
-                    Message = ex.Message,
-                    Timestamp = DateTime.UtcNow
-                });
-        }
-    }
-
-    private Dictionary<string, object>? ParseArguments(string argumentsJson)
-    {
-        if (string.IsNullOrWhiteSpace(argumentsJson) || argumentsJson == "{}")
-        {
-            return null;
-        }
-
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(argumentsJson);
-        }
-        catch
-        {
-            return null;
-        }
+        return Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow });
     }
 }
 
@@ -182,32 +81,4 @@ public class CreatePlanRequest
     [Required]
     [MinLength(1)]
     public string Intent { get; set; } = string.Empty;
-}
-
-public class PlanResponseDto
-{
-    public string Goal { get; set; } = string.Empty;
-    public string Analysis { get; set; } = string.Empty;
-    public List<PlanStepDto> Steps { get; set; } = new();
-}
-
-public class PlanStepDto
-{
-    public int Order { get; set; }
-    public string Action { get; set; } = string.Empty;
-    public string Tool { get; set; } = string.Empty;
-    public Dictionary<string, object>? Arguments { get; set; }
-}
-
-public class ErrorResponse
-{
-    public string Error { get; set; } = string.Empty;
-    public List<string> Details { get; set; } = new();
-}
-
-public class HealthResponse
-{
-    public string Status { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public DateTime Timestamp { get; set; }
 }

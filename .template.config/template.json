@@ -1,16 +1,92 @@
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Shawn Delaine Bellazan / Tooensure LLC",
+  "classifications": [ "AI", "Agent", "Aspire", "MCP" ],
   "identity": "Tooensure.Agent.GodSeed",
   "name": "Sovereign Agent Factory (PMCR-O)",
   "shortName": "agent-seed",
   "sourceName": "ProjectName",
   "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
   "symbols": {
     "ProjectName": {
       "type": "parameter",
       "replaces": "ProjectName",
-      "description": "The explicit name of the Agent Project."
+      "fileRename": "ProjectName",
+      "description": "The explicit name of the Agent Project (e.g., ResearchBot)."
+    },
+    "ModelName": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "qwen2.5-coder:latest",
+      "defaultValue": "qwen2.5-coder:latest",
+      "description": "The Ollama model to use."
+    },
+    "Role": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "DEFAULT_AGENT_ROLE",
+      "defaultValue": "PMCR-O Orchestrator",
+      "description": "The Agent's Role (e.g., 'Senior QA Engineer')."
+    },
+    "Expertise": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "DEFAULT_AGENT_EXPERTISE",
+      "defaultValue": "Planning and Execution Cycles",
+      "description": "The Agent's Domain Knowledge."
+    },
+    "Voice": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "DEFAULT_AGENT_VOICE",
+      "defaultValue": "Analytical and Precise",
+      "description": "The tone of the agent."
+    },
+    "SkipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "description": "If specified, skips the automatic dotnet restore.",
+      "defaultValue": "false"
     }
-  }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "exclude": [
+            "**/bin/**",
+            "**/obj/**",
+            "**/.vs/**",
+            "**/.git/**",
+            "**/logs/**",
+            "**/*.user",
+            "**/*.log",
+            "**/*.lock"
+          ]
+        }
+      ]
+    }
+  ],
+  "postActions": [
+    {
+      "condition": "(!SkipRestore)",
+      "description": "Restoring NuGet packages...",
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "args": {
+        "executable": "dotnet",
+        "args": "restore"
+      }
+    },
+    {
+      "description": "Displaying Next Steps",
+      "actionId": "84C0DA21-51C8-4541-9940-6CA19AF04EE6",
+      "args": {
+        "text": "\n-------------------------------------------------------------------\n🧬 GENETIC SEQUENCE INJECTED.\n\nTo awaken your agent:\n  1. cd [ProjectName]/src/[ProjectName].AppHost\n  2. dotnet run\n\nYour Agent's Persona has been compiled into the core assembly.\n-------------------------------------------------------------------"
+      }
+    }
+  ]
 }

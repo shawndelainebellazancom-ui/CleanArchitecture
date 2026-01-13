@@ -1,5 +1,4 @@
 ﻿using Microsoft.Playwright;
-using Microsoft.Extensions.Logging;
 
 namespace ProjectName.McpServer.Services;
 

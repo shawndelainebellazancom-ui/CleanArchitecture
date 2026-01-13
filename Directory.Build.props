@@ -1,9 +1,10 @@
 <Project>
 	<PropertyGroup>
+		<!-- Force all projects to use the version matrix above -->
+		<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+		<!-- Common properties -->
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
-		<RootNamespace>ProjectName.$(MSBuildProjectName.Replace("ProjectName.", ""))</RootNamespace>
-		<AssemblyName>$(RootNamespace)</AssemblyName>
 	</PropertyGroup>
 </Project>

@@ -1,52 +1,53 @@
 syntax = "proto3";
 
-option csharp_namespace = "ProjectName.PlanerService";
+option csharp_namespace = "ProjectName.PlannerService";
 
 package planner;
 
-// The Planner service definition
 service Planner {
-  // Creates an execution plan from user intent
   rpc CreatePlan (PlanRequest) returns (PlanResponse);
-  
-  // Health check endpoint
+  rpc ValidateOutcome (ValidationRequest) returns (ValidationResponse);
   rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
 }
 
-// Request message for CreatePlan
 message PlanRequest {
   string intent = 1;
 }
 
-// Response message for CreatePlan
 message PlanResponse {
   bool success = 1;
   string goal = 2;
-  string analysis = 3;
-  repeated PlanStepMessage steps = 4;
-  string error_message = 5;
+  repeated PlanStepMessage steps = 3;
+  string analysis = 4;
+  string errorMessage = 5;
 }
 
-// Individual plan step
 message PlanStepMessage {
   int32 order = 1;
   string action = 2;
   string tool = 3;
-  string arguments_json = 4;
+  string argumentsJson = 4;
 }
 
-// Health check request
-message HealthCheckRequest {
+message ValidationRequest {
+  string intent = 1;
+  string executionLog = 2;
 }
 
-// Health check response
+message ValidationResponse {
+  bool success = 1;
+  string validationJson = 2;
+  string errorMessage = 3;
+}
+
+message HealthCheckRequest {}
+
 message HealthCheckResponse {
   enum ServingStatus {
     UNKNOWN = 0;
     SERVING = 1;
     NOT_SERVING = 2;
   }
-  
   ServingStatus status = 1;
   string message = 2;
 }

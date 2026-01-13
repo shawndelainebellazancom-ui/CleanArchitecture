@@ -17,6 +17,6 @@
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.McpServer\ProjectName.McpServer.csproj" />
 		<ProjectReference Include="..\ProjectName.OrchestrationApi\ProjectName.OrchestrationApi.csproj" />
-		<ProjectReference Include="..\ProjectName.PlanerService\ProjectName.PlanerService.csproj" />
+		<ProjectReference Include="..\ProjectName.PlannerService\ProjectName.PlannerService.csproj" />
 	</ItemGroup>
 </Project>

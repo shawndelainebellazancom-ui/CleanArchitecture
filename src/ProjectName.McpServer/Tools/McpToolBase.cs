@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace ProjectName.McpServer.Tools;
 

@@ -1,6 +1,5 @@
-﻿using System.Text.Json;
-using Microsoft.Extensions.Logging;
-using ProjectName.McpServer.Tools;
+﻿using ProjectName.McpServer.Tools;
+using System.Text.Json;
 
 namespace ProjectName.McpServer.Services;
 

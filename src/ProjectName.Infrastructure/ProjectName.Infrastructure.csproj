@@ -4,20 +4,37 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+
+		<!-- 
+           GENETIC MARKERS 
+           The Template Engine replaces these DEFAULT values with CLI arguments.
+        -->
+		<AgentRole>DEFAULT_AGENT_ROLE</AgentRole>
+		<AgentExpertise>DEFAULT_AGENT_EXPERTISE</AgentExpertise>
+		<AgentVoice>DEFAULT_AGENT_VOICE</AgentVoice>
 	</PropertyGroup>
 
+	<!-- INJECT MARKERS INTO ASSEMBLY METADATA -->
 	<ItemGroup>
-		<!-- MCP Protocol -->
+		<AssemblyAttribute Include="ProjectName.Core.Attributes.AgentPersonaAttribute">
+			<_Parameter1>$(AgentRole)</_Parameter1>
+			<_Parameter2>$(AgentExpertise)</_Parameter2>
+			<_Parameter3>$(AgentVoice)</_Parameter3>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
 		<PackageReference Include="ModelContextProtocol" />
 		<PackageReference Include="ModelContextProtocol.Core" />
-
-		<!-- AI and Agent Framework -->
 		<PackageReference Include="Microsoft.Extensions.AI" />
 		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
 		<PackageReference Include="Microsoft.Agents.AI" />
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
 		<PackageReference Include="OllamaSharp" />
-
-		<!-- HTTP Client Extensions - REQUIRED for AddHttpClient -->
 		<PackageReference Include="Microsoft.Extensions.Http" />
 	</ItemGroup>
 

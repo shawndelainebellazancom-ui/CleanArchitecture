@@ -32,13 +32,18 @@ PROJECT TOPOLOGY (Tree)
     └── 📁 ProjectName.Infrastructure/
         └── 📁 Agents/
                 📄 PlannerAgent.cs
+        └── 📁 Data/
+                📄 CognitiveDbContext.cs
         └── 📁 MCP/
+                📄 IMcpToolExecutor.cs
                 📄 McpClientConfiguration.cs
         └── 📁 Schemas/
                 📄 Plan.schema.json
+        └── 📁 Services/
+                📄 InMemoryCognitiveTrail.cs
+                📄 PersistentCognitiveTrail.cs
         └── 📁 Validation/
                 📄 JsonSchemaValidator.cs
-            📄 Class1.cs
             📄 DefaultPlanner.cs
             📄 ProjectName.Infrastructure.csproj
     └── 📁 ProjectName.McpServer/
@@ -62,6 +67,8 @@ PROJECT TOPOLOGY (Tree)
                 📄 OrchestrationController.cs
         └── 📁 Properties/
                 📄 launchSettings.json
+        └── 📁 Services/
+                📄 GrpcPlannerGateway.cs
             📄 appsettings.Development.json
             📄 appsettings.json
             📄 Dockerfile
@@ -82,7 +89,6 @@ PROJECT TOPOLOGY (Tree)
     └── 📁 ProjectName.ServiceDefaults/
             📄 Extensions.cs
             📄 ProjectName.ServiceDefaults.csproj
-    └── 📁 ProjectName.Tests/
     📄 nuget.config
     📄 README.md
 
@@ -100,18 +106,80 @@ FILE: T:\agents\ProjectName\.template.config\template.json
 {
   "$schema": "http://json.schemastore.org/template",
   "author": "Shawn Delaine Bellazan / Tooensure LLC",
+  "classifications": [ "AI", "Agent", "Aspire", "MCP" ],
   "identity": "Tooensure.Agent.GodSeed",
   "name": "Sovereign Agent Factory (PMCR-O)",
   "shortName": "agent-seed",
   "sourceName": "ProjectName",
   "preferNameDirectory": true,
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
   "symbols": {
     "ProjectName": {
       "type": "parameter",
       "replaces": "ProjectName",
-      "description": "The explicit name of the Agent Project."
+      "fileRename": "ProjectName",
+      "description": "The explicit name of the Agent Project (e.g., ResearchBot)."
+    },
+    "ModelName": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "qwen2.5-coder:latest",
+      "defaultValue": "qwen2.5-coder:latest",
+      "description": "The Ollama model to use (default: qwen2.5-coder:latest)."
+    },
+    "OllamaUrl": {
+      "type": "parameter",
+      "datatype": "string",
+      "replaces": "http://localhost:11434",
+      "defaultValue": "http://localhost:11434",
+      "description": "The endpoint for the LLM provider."
+    },
+    "SkipRestore": {
+      "type": "parameter",
+      "datatype": "bool",
+      "description": "If specified, skips the automatic dotnet restore.",
+      "defaultValue": "false"
     }
-  }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "exclude": [
+            "**/bin/**",
+            "**/obj/**",
+            "**/.vs/**",
+            "**/.git/**",
+            "**/logs/**",
+            "**/*.user",
+            "**/*.log",
+            "**/*.lock"
+          ]
+        }
+      ]
+    }
+  ],
+  "postActions": [
+    {
+      "condition": "(!SkipRestore)",
+      "description": "Restoring NuGet packages...",
+      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
+      "args": {
+        "executable": "dotnet",
+        "args": "restore"
+      }
+    },
+    {
+      "description": "Displaying Next Steps",
+      "actionId": "84C0DA21-51C8-4541-9940-6CA19AF04EE6",
+      "args": {
+        "text": "\n-------------------------------------------------------------------\nGOD SEED PLANTED SUCCESSFULY.\n\nTo awaken your agent:\n  1. cd [ProjectName]/src/[ProjectName].AppHost\n  2. dotnet run\n\nEnsure Ollama is running at the configured endpoint.\n-------------------------------------------------------------------"
+      }
+    }
+  ]
 }
 
 ------------------------------------------------------------------------------
@@ -558,8 +626,6 @@ FILE: T:\agents\ProjectName\src\ProjectName.AppHost\Properties\launchSettings.js
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.AppHost\AppHost.cs
 ------------------------------------------------------------------------------
-using Aspire.Hosting;
-
 var builder = DistributedApplication.CreateBuilder(args);
 
 // ============================================================================
@@ -658,44 +724,102 @@ FILE: T:\agents\ProjectName\src\ProjectName.AppHost\ProjectName.AppHost.csproj
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Application\Orchestrator.cs
 ------------------------------------------------------------------------------
-using ProjectName.Core;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ProjectName.Core.Entities;
 using ProjectName.Core.Interfaces;
+using ProjectName.Infrastructure.MCP;
 
 namespace ProjectName.Application;
 
-/// <summary>
-/// Cognitive Orchestrator implementing the PMCR-O pattern
-/// Phase P: Plan, Phase M: Make, Phase C: Check, Phase R: Reflect, Phase O: Optimize
-/// </summary>
 public class CognitiveOrchestrator
 {
     private readonly IPlanner _planner;
+    private readonly IMcpToolExecutor _mcpExecutor;
     private readonly ICognitiveTrail _trail;
     private readonly AgentIdentity _identity;
+    private readonly ILogger<CognitiveOrchestrator> _logger;
 
-    public CognitiveOrchestrator(IPlanner planner, ICognitiveTrail trail, AgentIdentity identity)
+    public CognitiveOrchestrator(
+        IPlanner planner,
+        IMcpToolExecutor mcpExecutor,
+        ICognitiveTrail trail,
+        AgentIdentity identity,
+        ILogger<CognitiveOrchestrator> logger)
     {
         _planner = planner;
+        _mcpExecutor = mcpExecutor;
         _trail = trail;
         _identity = identity;
+        _logger = logger;
     }
 
-    /// <summary>
-    /// Processes user intent through the PMCR-O cognitive loop
-    /// </summary>
     public async Task<string> ProcessIntent(string seed, CancellationToken ct = default)
     {
-        // Phase P: Plan - Create execution strategy
+        _logger.LogInformation("[{Phase}] Seed Intent: {Seed}", "INTAKE", seed);
+
+        // --- PHASE P: PLAN ---
         var plan = await _planner.CreatePlanAsync(seed, ct);
-        _trail.Record("Plan", new { Seed = seed, Goal = plan.Goal, StepCount = plan.Steps.Count });
+        _trail.Record("Plan", new { Seed = seed, Goal = plan.Goal, Steps = plan.Steps });
 
-        // TODO: Phase M: Make - Execute the plan steps
-        // TODO: Phase C: Check - Validate execution results
-        // TODO: Phase R: Reflect - Learn from outcomes
-        // TODO: Phase O: Optimize - Improve future performance
+        _logger.LogInformation("[{Phase}] Plan Generated: {Count} steps", "PLAN", plan.Steps.Count);
 
-        return $"[IDENTITY: {_identity.Name}] Goal: {plan.Goal}\nSteps: {plan.Steps.Count}\nAnalysis: {plan.Analysis}";
+        var executionResults = new List<object>();
+
+        // --- PHASE M: MAKE (The Execution Loop) ---
+        foreach (var step in plan.Steps)
+        {
+            _logger.LogInformation("[{Phase}] Executing Step {Order}: {Action} via {Tool}", "MAKE", step.Order, step.Action, step.Tool);
+
+            try
+            {
+                var arguments = JsonSerializer.Deserialize<Dictionary<string, object>>(step.ArgumentsJson)
+                                ?? new Dictionary<string, object>();
+
+                var result = await _mcpExecutor.ExecuteToolAsync(step.Tool, arguments, ct);
+
+                var stepRecord = new
+                {
+                    Step = step.Order,
+                    Tool = step.Tool,
+                    Success = result.Success,
+                    Output = result.Data,
+                    Error = result.Error
+                };
+
+                executionResults.Add(stepRecord);
+                _trail.Record("Make", stepRecord);
+
+                if (!result.Success)
+                {
+                    _logger.LogWarning("Step {Order} failed: {Error}", step.Order, result.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "CRITICAL: Execution failure at step {Order}", step.Order);
+                // Continue loop or break? For now, we continue to see if other steps can recover.
+            }
+        }
+
+        // --- PHASE C: CHECK ---
+        _logger.LogInformation("[{Phase}] Validating outcome...", "CHECK");
+
+        var executionJson = JsonSerializer.Serialize(executionResults);
+        var validation = await _planner.ValidateOutcomeAsync(seed, executionJson, ct);
+
+        _trail.Record("Check", validation);
+
+        // --- PHASE R: REFLECT ---
+        var finalResult = new
+        {
+            Goal = plan.Goal,
+            Status = "Completed",
+            Validation = JsonSerializer.Deserialize<object>(validation),
+            ExecutionLog = executionResults
+        };
+
+        return JsonSerializer.Serialize(finalResult, new JsonSerializerOptions { WriteIndented = true });
     }
 }
 
@@ -712,6 +836,7 @@ FILE: T:\agents\ProjectName\src\ProjectName.Application\ProjectName.Application.
 
 	<ItemGroup>
 		<ProjectReference Include="..\ProjectName.Core\ProjectName.Core.csproj" />
+		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 	</ItemGroup>
 
 </Project>
@@ -726,10 +851,6 @@ public record AgentIdentity(string Name, string Role, string Philosophy);
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\Entities\Thought.cs
 ------------------------------------------------------------------------------
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace ProjectName.Core.Entities
 {
     public record Thought(string Phase, string Content, DateTime Timestamp);
@@ -740,10 +861,6 @@ namespace ProjectName.Core.Entities
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Core\Interfaces\ICognitiveTrail.cs
 ------------------------------------------------------------------------------
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace ProjectName.Core.Interfaces
 {
     public interface ICognitiveTrail
@@ -785,6 +902,11 @@ public interface IPlanner
     /// Creates a structured plan from user intent using LLM reasoning
     /// </summary>
     Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Validates the execution results against the original intent (Phase C)
+    /// </summary>
+    Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default);
 }
 
 ------------------------------------------------------------------------------
@@ -834,7 +956,7 @@ public class PlannerAgent : IPlanner
         _logger = logger;
 
         var ollamaEndpoint = config["AgentSettings:OllamaEndpoint"] ?? "http://localhost:11434";
-        _modelName = config["AgentSettings:ModelName"] ?? "llama3.2:latest";
+        _modelName = config["AgentSettings:ModelName"] ?? "qwen2.5-coder:latest";
 
         _ollama = new OllamaApiClient(ollamaEndpoint);
 
@@ -870,7 +992,6 @@ public class PlannerAgent : IPlanner
                 Format = "json"
             };
 
-            // ✅ FIXED: ChatAsync returns IAsyncEnumerable, need to consume it
             ChatResponseStream? lastResponse = null;
             await foreach (var response in _ollama.ChatAsync(request, ct))
             {
@@ -878,7 +999,6 @@ public class PlannerAgent : IPlanner
             }
 
             var responseContent = lastResponse?.Message?.Content ?? "{}";
-
             var plan = ParseStructuredResponse(responseContent);
 
             if (!ValidatePlanStructure(plan))
@@ -890,20 +1010,59 @@ public class PlannerAgent : IPlanner
                 return CreateFallbackPlan(intent, "Schema validation failed");
             }
 
-            if (_logger.IsEnabled(LogLevel.Information))
-            {
-                _logger.LogInformation(
-                    "Plan created successfully - Steps: {Count}, Goal: {Goal}",
-                    plan.Steps.Count,
-                    plan.Goal);
-            }
-
             return plan;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating plan for intent: {Intent}", intent);
             return CreateFallbackPlan(intent, ex.Message);
+        }
+    }
+
+    public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Validating execution outcome for intent: {Intent}", intent);
+
+        try
+        {
+            // FIX: Using $$""" to allow literal JSON braces { } while using {{ }} for interpolation
+            var prompt = $$"""
+            USER INTENT: {{intent}}
+            
+            EXECUTION LOG:
+            {{executionLog}}
+            
+            ACT AS THE AUDITOR (Phase C: Check).
+            Analyze the Execution Log. Did the tools successfully accomplish the User Intent?
+            
+            Respond ONLY with a JSON object in this format:
+            {
+                "success": true/false,
+                "reasoning": "Explain why it succeeded or failed based on the logs",
+                "correction": "If failed, what should be done next? (or null)"
+            }
+            """;
+
+            var request = new ChatRequest
+            {
+                Model = _modelName,
+                Messages = new List<Message> { new(ChatRole.User, prompt) },
+                Format = "json",
+                Stream = false
+            };
+
+            var responseContent = "";
+            await foreach (var chunk in _ollama.ChatAsync(request, ct))
+            {
+                responseContent = chunk.Message.Content;
+            }
+
+            return responseContent;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Validation failed");
+            return JsonSerializer.Serialize(new { success = false, reasoning = $"Validation Error: {ex.Message}" });
         }
     }
 
@@ -929,10 +1088,13 @@ public class PlannerAgent : IPlanner
           ]
         }
         
-        AVAILABLE TOOLS:
-        - browser_navigate, browser_click, browser_type, browser_screenshot, browser_extract
-        - web_search, web_fetch
-        - code_execution, file_operations, data_analysis
+        AVAILABLE TOOLS (MCP):
+        1. browser_navigate(url: string)
+        2. browser_click(selector: string)
+        3. browser_type(selector: string, text: string)
+        4. browser_screenshot(path: string, fullPage: boolean)
+        5. browser_extract(selector: string)
+        6. browser_evaluate(script: string)
         
         RULES:
         - Keep steps focused (3-7 typically)
@@ -950,16 +1112,14 @@ public class PlannerAgent : IPlanner
         
         Create an execution plan following the exact JSON structure.
         Think through the steps, then output ONLY the JSON response.
-        
-        Remember: NO markdown, NO explanations, ONLY valid JSON.
         """;
     }
 
-    private PlanResult ParseStructuredResponse(string json)
+    private static PlanResult ParseStructuredResponse(string json)
     {
         try
         {
-            // Clean potential markdown (defense in depth)
+            // Clean potential markdown
             json = json.Replace("```json", "").Replace("```", "").Trim();
 
             var options = new JsonSerializerOptions
@@ -976,25 +1136,22 @@ public class PlannerAgent : IPlanner
 
             var root = doc.RootElement;
 
-            // Validate required fields exist
             if (!root.TryGetProperty("goal", out var goalProp) ||
                 !root.TryGetProperty("analysis", out var analysisProp) ||
                 !root.TryGetProperty("steps", out var stepsProp))
             {
-                throw new JsonException("Missing required fields: goal, analysis, or steps");
+                throw new JsonException("Missing required fields");
             }
 
-            var goal = goalProp.GetString() ?? throw new JsonException("Goal is null");
-            var analysis = analysisProp.GetString() ?? throw new JsonException("Analysis is null");
+            var goal = goalProp.GetString() ?? "";
+            var analysis = analysisProp.GetString() ?? "";
 
             var steps = new List<PlanStep>();
             foreach (var stepElement in stepsProp.EnumerateArray())
             {
                 var order = stepElement.GetProperty("order").GetInt32();
-                var action = stepElement.GetProperty("action").GetString()
-                    ?? throw new JsonException($"Step {order} missing action");
-                var tool = stepElement.GetProperty("tool").GetString()
-                    ?? throw new JsonException($"Step {order} missing tool");
+                var action = stepElement.GetProperty("action").GetString() ?? "";
+                var tool = stepElement.GetProperty("tool").GetString() ?? "";
 
                 var argsJson = stepElement.TryGetProperty("arguments", out var argsElement)
                     ? argsElement.GetRawText()
@@ -1003,22 +1160,11 @@ public class PlannerAgent : IPlanner
                 steps.Add(new PlanStep(order, action, tool, argsJson));
             }
 
-            if (steps.Count == 0)
-            {
-                throw new JsonException("Steps array is empty");
-            }
-
-            // Sort by order
             steps = steps.OrderBy(s => s.Order).ToList();
-
             return new PlanResult(goal, steps, analysis);
         }
-        catch (Exception ex)
+        catch
         {
-            if (_logger.IsEnabled(LogLevel.Warning))
-            {
-                _logger.LogWarning(ex, "Failed to parse structured response, using fallback");
-            }
             throw;
         }
     }
@@ -1027,10 +1173,7 @@ public class PlannerAgent : IPlanner
     {
         return !string.IsNullOrWhiteSpace(plan.Goal) &&
                !string.IsNullOrWhiteSpace(plan.Analysis) &&
-               plan.Steps.Count > 0 &&
-               plan.Steps.All(s =>
-                   !string.IsNullOrWhiteSpace(s.Action) &&
-                   !string.IsNullOrWhiteSpace(s.Tool));
+               plan.Steps.Count > 0;
     }
 
     private PlanResult CreateFallbackPlan(string intent, string reason)
@@ -1055,6 +1198,73 @@ public class PlannerAgent : IPlanner
 }
 
 ------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Data\CognitiveDbContext.cs
+------------------------------------------------------------------------------
+using Microsoft.EntityFrameworkCore;
+using ProjectName.Core.Entities;
+
+namespace ProjectName.Infrastructure.Data;
+
+public class CognitiveDbContext : DbContext
+{
+    public CognitiveDbContext(DbContextOptions<CognitiveDbContext> options) : base(options) { }
+
+    public DbSet<CognitiveLog> Logs { get; set; }
+}
+
+// Simple Entity for DB
+public class CognitiveLog
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public string Phase { get; set; } = string.Empty;
+    public string DataJson { get; set; } = "{}";
+}
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\MCP\IMcpToolExecutor.cs
+------------------------------------------------------------------------------
+namespace ProjectName.Infrastructure.MCP;
+
+/// <summary>
+/// Interface for executing MCP tools
+/// </summary>
+public interface IMcpToolExecutor
+{
+    /// <summary>
+    /// Execute a specific MCP tool with arguments
+    /// </summary>
+    Task<McpToolResult> ExecuteToolAsync(
+        string toolName,
+        Dictionary<string, object> arguments,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// List all available MCP tools from the server
+    /// </summary>
+    Task<List<McpToolInfo>> ListAvailableToolsAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Result of an MCP tool execution
+/// </summary>
+public record McpToolResult(
+    bool Success,
+    string ToolName,
+    object? Data,
+    string? Error
+);
+
+/// <summary>
+/// Information about an available MCP tool
+/// </summary>
+public record McpToolInfo(
+    string Name,
+    string Description,
+    Dictionary<string, object> InputSchema
+);
+
+------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\MCP\McpClientConfiguration.cs
 ------------------------------------------------------------------------------
 using Microsoft.Extensions.Configuration;
@@ -1073,16 +1283,14 @@ public static class McpClientConfiguration
         // Register MCP HTTP client with service discovery
         services.AddHttpClient<IMcpToolExecutor, McpToolExecutor>((sp, client) =>
         {
-            // Aspire will resolve "playwright-mcp" via service discovery
-            var endpoint = configuration.GetConnectionString("playwright-mcp")
-                ?? configuration["McpSettings:PlaywrightEndpoint"]
-                ?? "http://localhost:3000";
+            // Aspire will resolve "mcp-server" via service discovery
+            var endpoint = configuration.GetConnectionString("mcp-server")
+                ?? configuration["McpSettings:Endpoint"]
+                ?? "http://localhost:5159";
 
             client.BaseAddress = new Uri(endpoint);
             client.Timeout = TimeSpan.FromSeconds(30);
         });
-
-        services.AddSingleton<IMcpToolExecutor, McpToolExecutor>();
 
         return services;
     }
@@ -1106,7 +1314,7 @@ public class McpToolExecutor : IMcpToolExecutor
     {
         try
         {
-            // Actual MCP protocol communication
+            // Build MCP protocol request
             var request = new
             {
                 jsonrpc = "2.0",
@@ -1118,6 +1326,11 @@ public class McpToolExecutor : IMcpToolExecutor
                 },
                 id = Guid.NewGuid().ToString()
             };
+
+            if (_logger.IsEnabled(LogLevel.Debug))
+            {
+                _logger.LogDebug("Executing MCP tool: {ToolName}", toolName);
+            }
 
             var response = await _httpClient.PostAsJsonAsync("/mcp", request, ct);
             response.EnsureSuccessStatusCode();
@@ -1133,7 +1346,11 @@ public class McpToolExecutor : IMcpToolExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP tool execution failed: {Tool}", toolName);
+            if (_logger.IsEnabled(LogLevel.Error))
+            {
+                _logger.LogError(ex, "MCP tool execution failed: {Tool}", toolName);
+            }
+
             return new McpToolResult(
                 Success: false,
                 ToolName: toolName,
@@ -1167,16 +1384,19 @@ public class McpToolExecutor : IMcpToolExecutor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to list MCP tools");
+            if (_logger.IsEnabled(LogLevel.Error))
+            {
+                _logger.LogError(ex, "Failed to list MCP tools");
+            }
             return new List<McpToolInfo>();
         }
     }
 }
 
 // MCP Protocol DTOs
-record McpResponse(object? Result, object? Error);
-record McpListResponse(List<McpTool> Tools);
-record McpTool(string Name, string Description, Dictionary<string, object> InputSchema);
+internal record McpResponse(object? Result, object? Error);
+internal record McpListResponse(List<McpTool> Tools);
+internal record McpTool(string Name, string Description, Dictionary<string, object> InputSchema);
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Schemas\Plan.schema.json
@@ -1203,10 +1423,80 @@ FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Schemas\Plan.schema.j
 }
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Validation\JsonSchemaValidator.cs
+FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Services\InMemoryCognitiveTrail.cs
+------------------------------------------------------------------------------
+using Microsoft.Extensions.Logging;
+using ProjectName.Core.Interfaces;
+using System.Collections.Concurrent;
+using System.Text.Json;
+
+namespace ProjectName.Infrastructure.Services;
+
+public class InMemoryCognitiveTrail : ICognitiveTrail
+{
+    private readonly ConcurrentBag<object> _history = new();
+    private readonly ILogger<InMemoryCognitiveTrail> _logger;
+
+    public InMemoryCognitiveTrail(ILogger<InMemoryCognitiveTrail> logger)
+    {
+        _logger = logger;
+    }
+
+    public void Record(string phase, object data)
+    {
+        var entry = new { Timestamp = DateTime.UtcNow, Phase = phase, Data = data };
+        _history.Add(entry);
+        _logger.LogInformation("TRAIL [{Phase}]: {Json}", phase, JsonSerializer.Serialize(data));
+    }
+
+    public string GetHistory()
+    {
+        return JsonSerializer.Serialize(_history);
+    }
+}
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Services\PersistentCognitiveTrail.cs
 ------------------------------------------------------------------------------
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using ProjectName.Core.Interfaces;
+using ProjectName.Infrastructure.Data;
+
+namespace ProjectName.Infrastructure.Services;
+
+public class PersistentCognitiveTrail : ICognitiveTrail
+{
+    private readonly CognitiveDbContext _db;
+    private readonly ILogger<PersistentCognitiveTrail> _logger;
+
+    public PersistentCognitiveTrail(CognitiveDbContext db, ILogger<PersistentCognitiveTrail> logger)
+    {
+        _db = db;
+        _logger = logger;
+    }
+
+    public void Record(string phase, object data)
+    {
+        var json = JsonSerializer.Serialize(data);
+        _db.Logs.Add(new CognitiveLog { Phase = phase, DataJson = json });
+        _db.SaveChanges(); // Synchronous for simplicity in this cycle
+        _logger.LogInformation("DB TRAIL [{Phase}]: {Json}", phase, json);
+    }
+
+    public string GetHistory()
+    {
+        // Simple dump of last 50 logs
+        var logs = _db.Logs.OrderByDescending(x => x.Timestamp).Take(50).ToList();
+        return JsonSerializer.Serialize(logs);
+    }
+}
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Validation\JsonSchemaValidator.cs
+------------------------------------------------------------------------------
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace ProjectName.Infrastructure.Validation;
 
@@ -1396,18 +1686,6 @@ public class ValidationResult
 }
 
 ------------------------------------------------------------------------------
-FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\Class1.cs
-------------------------------------------------------------------------------
-namespace ProjectName.Infrastructure
-{
-    public class Class1
-    {
-
-    }
-}
-
-
-------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\DefaultPlanner.cs
 ------------------------------------------------------------------------------
 using System.Text.Json;
@@ -1419,10 +1697,31 @@ public class DefaultPlanner : IPlanner
 {
     public Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default)
     {
-        throw new NotImplementedException();
+        // Simple fallback plan
+        var steps = new List<PlanStep>
+        {
+            new(1, "Analyze Input", "manual_intervention", "{}"),
+            new(2, "Reflect", "manual_intervention", "{}")
+        };
+
+        return Task.FromResult(new PlanResult(intent, steps, "Default planner execution"));
     }
 
-    public Task<string> PlanBareMinimum(string seedIntent)
+    public Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
+    {
+        // Default validation always passes
+        var validation = new
+        {
+            success = true,
+            reasoning = "Default planner assumes success without AI validation.",
+            correction = (string?)null
+        };
+
+        return Task.FromResult(JsonSerializer.Serialize(validation));
+    }
+
+    // Legacy method kept if needed, or can be removed if not part of interface
+    public static Task<string> PlanBareMinimum(string seedIntent)
     {
         var plan = new
         {
@@ -1445,12 +1744,23 @@ FILE: T:\agents\ProjectName\src\ProjectName.Infrastructure\ProjectName.Infrastru
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- MCP Protocol -->
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools">
+		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		  <PrivateAssets>all</PrivateAssets>
+		</PackageReference>
 		<PackageReference Include="ModelContextProtocol" />
 		<PackageReference Include="ModelContextProtocol.Core" />
+
+		<!-- AI and Agent Framework -->
 		<PackageReference Include="Microsoft.Extensions.AI" />
 		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
-		<PackageReference Include="OllamaSharp" />
 		<PackageReference Include="Microsoft.Agents.AI" />
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+		<PackageReference Include="OllamaSharp" />
+
+		<!-- HTTP Client Extensions - REQUIRED for AddHttpClient -->
+		<PackageReference Include="Microsoft.Extensions.Http" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -1490,9 +1800,8 @@ FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Properties\launchSettings.
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Services\McpServerService.cs
 ------------------------------------------------------------------------------
-using System.Text.Json;
-using Microsoft.Extensions.Logging;
 using ProjectName.McpServer.Tools;
+using System.Text.Json;
 
 namespace ProjectName.McpServer.Services;
 
@@ -1504,6 +1813,10 @@ public class McpServerService
     private readonly ILogger<McpServerService> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly Dictionary<string, Type> _tools;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true
+    };
 
     public McpServerService(
         ILogger<McpServerService> logger,
@@ -1511,7 +1824,7 @@ public class McpServerService
     {
         _logger = logger;
         _serviceProvider = serviceProvider;
-        _tools = new Dictionary<string, Type>();
+        _tools = [];
 
         RegisterTools();
     }
@@ -1550,7 +1863,10 @@ public class McpServerService
     /// </summary>
     public async Task<McpResponse> HandleRequestAsync(McpRequest request, CancellationToken ct = default)
     {
-        _logger.LogInformation("Handling MCP request: {Method}", request.Method);
+        if (_logger.IsEnabled(LogLevel.Information))
+        {
+            _logger.LogInformation("Handling MCP request: {Method}", request.Method);
+        }
 
         try
         {
@@ -1559,17 +1875,17 @@ public class McpServerService
                 "initialize" => HandleInitialize(request),
                 "tools/list" => await HandleListToolsAsync(ct),
                 "tools/call" => await HandleToolCallAsync(request, ct),
-                _ => McpResponse.Error(request.Id, -32601, $"Method not found: {request.Method}")
+                _ => McpResponse.CreateError(request.Id, -32601, $"Method not found: {request.Method}")
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling MCP request");
-            return McpResponse.Error(request.Id, -32603, ex.Message);
+            return McpResponse.CreateError(request.Id, -32603, ex.Message);
         }
     }
 
-    private McpResponse HandleInitialize(McpRequest request)
+    private static McpResponse HandleInitialize(McpRequest request)
     {
         var result = new
         {
@@ -1585,7 +1901,7 @@ public class McpServerService
             }
         };
 
-        return McpResponse.Success(request.Id, result);
+        return McpResponse.CreateSuccess(request.Id, result);
     }
 
     private async Task<McpResponse> HandleListToolsAsync(CancellationToken ct)
@@ -1611,28 +1927,28 @@ public class McpServerService
         }
 
         var result = new { tools };
-        return McpResponse.Success(null, result);
+        return McpResponse.CreateSuccess(null, result);
     }
 
     private async Task<McpResponse> HandleToolCallAsync(McpRequest request, CancellationToken ct)
     {
         if (request.Params == null)
         {
-            return McpResponse.Error(request.Id, -32602, "Missing params");
+            return McpResponse.CreateError(request.Id, -32602, "Missing params");
         }
 
         var paramsElement = (JsonElement)request.Params;
 
         if (!paramsElement.TryGetProperty("name", out var nameElement))
         {
-            return McpResponse.Error(request.Id, -32602, "Missing tool name");
+            return McpResponse.CreateError(request.Id, -32602, "Missing tool name");
         }
 
         var toolName = nameElement.GetString();
 
         if (string.IsNullOrEmpty(toolName) || !_tools.TryGetValue(toolName, out var toolType))
         {
-            return McpResponse.Error(request.Id, -32602, $"Unknown tool: {toolName}");
+            return McpResponse.CreateError(request.Id, -32602, $"Unknown tool: {toolName}");
         }
 
         var arguments = paramsElement.TryGetProperty("arguments", out var argsElement)
@@ -1643,20 +1959,20 @@ public class McpServerService
         var tool = _serviceProvider.GetRequiredService(toolType);
 
         // Find ExecuteAsync method that takes JsonElement
-        var executeMethod = toolType.GetMethod("ExecuteAsync", new[] { typeof(JsonElement), typeof(CancellationToken) });
+        var executeMethod = toolType.GetMethod("ExecuteAsync", [typeof(JsonElement), typeof(CancellationToken)]);
 
         if (executeMethod == null)
         {
-            return McpResponse.Error(request.Id, -32603, "Tool execution method not found");
+            return McpResponse.CreateError(request.Id, -32603, "Tool execution method not found");
         }
 
         // Invoke tool
-        var task = executeMethod.Invoke(tool, new object[] { arguments, ct }) as Task<McpToolResult>;
+        var task = executeMethod.Invoke(tool, [arguments, ct]) as Task<McpToolResult>;
         var result = await task!;
 
         if (!result.IsSuccess)
         {
-            return McpResponse.Error(request.Id, -32603, result.Error ?? "Tool execution failed");
+            return McpResponse.CreateError(request.Id, -32603, result.Error ?? "Tool execution failed");
         }
 
         var response = new
@@ -1666,71 +1982,64 @@ public class McpServerService
                 new
                 {
                     type = "text",
-                    text = JsonSerializer.Serialize(result.Content, new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    })
+                    text = JsonSerializer.Serialize(result.Content, JsonOptions)
                 }
             }
         };
 
-        return McpResponse.Success(request.Id, response);
+        return McpResponse.CreateSuccess(request.Id, response);
     }
 }
 
 /// <summary>
 /// MCP request message
 /// </summary>
-public record McpRequest
+public record McpRequest(
+    string Method,
+    string? Id = null,
+    object? Params = null)
 {
     public string JsonRpc { get; init; } = "2.0";
-    public string? Id { get; init; }
-    public string Method { get; init; } = "";
-    public object? Params { get; init; }
 }
 
 /// <summary>
 /// MCP response message
 /// </summary>
-public record McpResponse
+public record McpResponse(
+    string? Id,
+    object? Result = null,
+    McpError? ErrorInfo = null)
 {
     public string JsonRpc { get; init; } = "2.0";
-    public string? Id { get; init; }
-    public object? Result { get; init; }
-    public McpError? Error { get; init; }
 
-    public static McpResponse Success(string? id, object result)
+    public static McpResponse CreateSuccess(string? id, object result)
     {
-        return new McpResponse
-        {
-            Id = id,
-            Result = result,
-            Error = null
-        };
+        return new McpResponse(
+            Id: id,
+            Result: result,
+            ErrorInfo: null
+        );
     }
 
-    public static McpResponse Error(string? id, int code, string message)
+    public static McpResponse CreateError(string? id, int code, string message)
     {
-        return new McpResponse
-        {
-            Id = id,
-            Result = null,
-            Error = new McpError { Code = code, Message = message }
-        };
+        return new McpResponse(
+            Id: id,
+            Result: null,
+            ErrorInfo: new McpError(code, message)
+        );
     }
 }
 
-public record McpError
-{
-    public int Code { get; init; }
-    public string Message { get; init; } = "";
-}
+/// <summary>
+/// MCP error details
+/// </summary>
+public record McpError(int Code, string Message);
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Services\PlaywrightManager.cs
 ------------------------------------------------------------------------------
 using Microsoft.Playwright;
-using Microsoft.Extensions.Logging;
 
 namespace ProjectName.McpServer.Services;
 
@@ -1879,7 +2188,6 @@ public class PlaywrightManager : IAsyncDisposable
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Tools\BrowserClickTool.cs
 ------------------------------------------------------------------------------
-using Microsoft.Extensions.Logging;
 using ProjectName.McpServer.Services;
 
 namespace ProjectName.McpServer.Tools;
@@ -1887,16 +2195,11 @@ namespace ProjectName.McpServer.Tools;
 /// <summary>
 /// Click an element on the page
 /// </summary>
-public class BrowserClickTool : McpToolBase<BrowserClickInput, BrowserClickOutput>
+public class BrowserClickTool(
+    PlaywrightManager playwright,
+    ILogger<BrowserClickTool> logger) : McpToolBase<BrowserClickInput, BrowserClickOutput>(logger)
 {
-    private readonly PlaywrightManager _playwright;
-
-    public BrowserClickTool(
-        PlaywrightManager playwright,
-        ILogger<BrowserClickTool> logger) : base(logger)
-    {
-        _playwright = playwright;
-    }
+    private readonly PlaywrightManager _playwright = playwright;
 
     public override string Name => "browser_click";
 
@@ -1906,7 +2209,10 @@ public class BrowserClickTool : McpToolBase<BrowserClickInput, BrowserClickOutpu
         BrowserClickInput input,
         CancellationToken ct = default)
     {
-        Logger.LogInformation("Clicking element: {Selector}", input.Selector);
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Clicking element: {Selector}", input.Selector);
+        }
 
         var page = await _playwright.GetPageAsync();
 
@@ -1951,16 +2257,11 @@ public record BrowserClickOutput
 /// <summary>
 /// Type text into an input element
 /// </summary>
-public class BrowserTypeTool : McpToolBase<BrowserTypeInput, BrowserTypeOutput>
+public class BrowserTypeTool(
+    PlaywrightManager playwright,
+    ILogger<BrowserTypeTool> logger) : McpToolBase<BrowserTypeInput, BrowserTypeOutput>(logger)
 {
-    private readonly PlaywrightManager _playwright;
-
-    public BrowserTypeTool(
-        PlaywrightManager playwright,
-        ILogger<BrowserTypeTool> logger) : base(logger)
-    {
-        _playwright = playwright;
-    }
+    private readonly PlaywrightManager _playwright = playwright;
 
     public override string Name => "browser_type";
 
@@ -1970,7 +2271,10 @@ public class BrowserTypeTool : McpToolBase<BrowserTypeInput, BrowserTypeOutput>
         BrowserTypeInput input,
         CancellationToken ct = default)
     {
-        Logger.LogInformation("Typing into element: {Selector}", input.Selector);
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Typing into element: {Selector}", input.Selector);
+        }
 
         var page = await _playwright.GetPageAsync();
 
@@ -1979,13 +2283,13 @@ public class BrowserTypeTool : McpToolBase<BrowserTypeInput, BrowserTypeOutput>
             await page.FillAsync(input.Selector, "");
         }
 
-        await page.TypeAsync(input.Selector, input.Text, new()
-        {
-            Delay = input.Delay ?? 50,
-            Timeout = input.Timeout ?? 30000
-        });
+        // Use FillAsync instead of deprecated TypeAsync
+        await page.FillAsync(input.Selector, input.Text);
 
-        Logger.LogInformation("Typed {Length} characters successfully", input.Text.Length);
+        if (Logger.IsEnabled(LogLevel.Information))
+        {
+            Logger.LogInformation("Typed {Length} characters successfully", input.Text.Length);
+        }
 
         return new BrowserTypeOutput
         {
@@ -2015,16 +2319,11 @@ public record BrowserTypeOutput
 /// <summary>
 /// Evaluate JavaScript in the browser context
 /// </summary>
-public class BrowserEvaluateTool : McpToolBase<BrowserEvaluateInput, BrowserEvaluateOutput>
+public class BrowserEvaluateTool(
+    PlaywrightManager playwright,
+    ILogger<BrowserEvaluateTool> logger) : McpToolBase<BrowserEvaluateInput, BrowserEvaluateOutput>(logger)
 {
-    private readonly PlaywrightManager _playwright;
-
-    public BrowserEvaluateTool(
-        PlaywrightManager playwright,
-        ILogger<BrowserEvaluateTool> logger) : base(logger)
-    {
-        _playwright = playwright;
-    }
+    private readonly PlaywrightManager _playwright = playwright;
 
     public override string Name => "browser_evaluate";
 
@@ -2064,9 +2363,7 @@ public record BrowserEvaluateOutput
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Tools\BrowserExtractTool.cs
 ------------------------------------------------------------------------------
-using Microsoft.Extensions.Logging;
 using ProjectName.McpServer.Services;
-using System.Text.Json;
 
 namespace ProjectName.McpServer.Tools;
 
@@ -2181,7 +2478,6 @@ public record BrowserExtractOutput
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Tools\BrowserNavigateTool.cs
 ------------------------------------------------------------------------------
-using Microsoft.Extensions.Logging;
 using ProjectName.McpServer.Services;
 
 namespace ProjectName.McpServer.Tools;
@@ -2256,7 +2552,6 @@ public record BrowserNavigateOutput
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Tools\BrowserScreenshotTool.cs
 ------------------------------------------------------------------------------
-using Microsoft.Extensions.Logging;
 using ProjectName.McpServer.Services;
 
 namespace ProjectName.McpServer.Tools;
@@ -2369,7 +2664,6 @@ public record BrowserScreenshotOutput
 FILE: T:\agents\ProjectName\src\ProjectName.McpServer\Tools\McpToolBase.cs
 ------------------------------------------------------------------------------
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace ProjectName.McpServer.Tools;
 
@@ -2600,17 +2894,22 @@ builder.Services.AddSwaggerGen(options =>
 
 // Register PlaywrightManager as singleton (browser lifecycle)
 builder.Services.AddSingleton<PlaywrightManager>();
+// ... previous code ...
 
-// Register MCP Server Service
+// Register MCP Server Service (Keep as Singleton)
 builder.Services.AddSingleton<McpServerService>();
 
-// Register all MCP tools
-builder.Services.AddScoped<BrowserNavigateTool>();
-builder.Services.AddScoped<BrowserClickTool>();
-builder.Services.AddScoped<BrowserTypeTool>();
-builder.Services.AddScoped<BrowserScreenshotTool>();
-builder.Services.AddScoped<BrowserExtractTool>();
-builder.Services.AddScoped<BrowserEvaluateTool>();
+// Register all MCP tools as SINGLETONS (Not Scoped)
+// They depend on PlaywrightManager (Singleton) and ILogger (Singleton), so this is safe.
+builder.Services.AddSingleton<BrowserNavigateTool>();
+builder.Services.AddSingleton<BrowserClickTool>();
+builder.Services.AddSingleton<BrowserTypeTool>();
+builder.Services.AddSingleton<BrowserScreenshotTool>();
+builder.Services.AddSingleton<BrowserExtractTool>();
+builder.Services.AddSingleton<BrowserEvaluateTool>();
+
+// Add Aspire service defaults
+// ... rest of code ...
 
 // Add Aspire service defaults (telemetry, health checks)
 builder.AddServiceDefaults();
@@ -2620,6 +2919,9 @@ var app = builder.Build();
 // Initialize Playwright on startup
 var playwright = app.Services.GetRequiredService<PlaywrightManager>();
 await playwright.InitializeAsync();
+
+// Cached JSON options
+var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
@@ -2643,7 +2945,7 @@ app.MapPost("/mcp", async (
         // Read request
         var request = await JsonSerializer.DeserializeAsync<McpRequest>(
             context.Request.Body,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            jsonOptions);
 
         if (request == null)
         {
@@ -2672,11 +2974,10 @@ app.MapPost("/mcp", async (
         });
     }
 })
-.WithName("McpProtocol")
-.WithOpenApi();
+.WithName("McpProtocol");
 
 // Health check endpoint
-app.MapGet("/health", async (PlaywrightManager playwright) =>
+app.MapGet("/health", (PlaywrightManager playwright) =>
 {
     var isHealthy = playwright.Browser != null && playwright.Browser.IsConnected;
 
@@ -2687,22 +2988,16 @@ app.MapGet("/health", async (PlaywrightManager playwright) =>
         timestamp = DateTime.UtcNow
     });
 })
-.WithName("HealthCheck")
-.WithOpenApi();
+.WithName("HealthCheck");
 
 // List available tools endpoint (for debugging)
 app.MapGet("/tools", async (McpServerService mcpServer) =>
 {
-    var request = new McpRequest
-    {
-        Method = "tools/list"
-    };
-
+    var request = new McpRequest("tools/list");
     var response = await mcpServer.HandleRequestAsync(request);
     return Results.Json(response.Result);
 })
-.WithName("ListTools")
-.WithOpenApi();
+.WithName("ListTools");
 
 // Map default Aspire endpoints
 app.MapDefaultEndpoints();
@@ -2745,180 +3040,79 @@ FILE: T:\agents\ProjectName\src\ProjectName.McpServer\ProjectName.McpServer.cspr
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Controllers\OrchestrationController.cs
 ------------------------------------------------------------------------------
-using Grpc.Net.Client;
 using Microsoft.AspNetCore.Mvc;
-using ProjectName.PlanerService;
+using ProjectName.Application;
 using System.ComponentModel.DataAnnotations;
 
 namespace ProjectName.OrchestrationApi.Controllers;
 
 /// <summary>
 /// REST API Gateway for PMCR-O Orchestration
-/// Exposes HTTP endpoints that internally call gRPC services
+/// Acts as the Nervous System trigger, invoking the Cognitive Orchestrator
+/// to execute the full Plan-Make-Check-Reflect loop.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class OrchestrationController : ControllerBase
 {
-    private readonly Planner.PlannerClient _plannerClient;
+    private readonly CognitiveOrchestrator _orchestrator;
     private readonly ILogger<OrchestrationController> _logger;
 
     public OrchestrationController(
-        Planner.PlannerClient plannerClient,
+        CognitiveOrchestrator orchestrator,
         ILogger<OrchestrationController> logger)
     {
-        _plannerClient = plannerClient;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
     /// <summary>
-    /// Creates an execution plan from user intent
+    /// Executes a full PMCR-O cognitive cycle based on user intent.
+    /// 1. PLANS using the Planner Service (Brain/LLM).
+    /// 2. MAKES using the MCP Server (Body/Tools).
+    /// 3. RECORDS the cognitive trail.
     /// </summary>
-    /// <param name="request">Intent request with user's goal</param>
-    /// <returns>Structured plan with steps and analysis</returns>
-    [HttpPost("plan")]
-    [ProducesResponseType(typeof(PlanResponseDto), StatusCodes.Status200OK)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
-    public async Task<IActionResult> CreatePlan(
+    /// <param name="request">The seed intent (e.g., "Navigate to google.com...")</param>
+    /// <returns>A JSON report containing the Goal, Status, and Execution Log.</returns>
+    [HttpPost("execute")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ExecuteIntent(
         [FromBody] CreatePlanRequest request,
         CancellationToken ct)
     {
         if (!ModelState.IsValid)
         {
-            return BadRequest(new ErrorResponse
-            {
-                Error = "Invalid request",
-                Details = ModelState.Values
-                    .SelectMany(v => v.Errors)
-                    .Select(e => e.ErrorMessage)
-                    .ToList()
-            });
+            return BadRequest(ModelState);
         }
 
-        _logger.LogInformation("Received plan request: {Intent}", request.Intent);
+        _logger.LogInformation("Received execution request: {Intent}", request.Intent);
 
         try
         {
-            // Call gRPC Planner service
-            var grpcRequest = new PlanRequest
-            {
-                Intent = request.Intent
-            };
+            // Triggers the Full PMCR-O Loop (Plan -> Make -> Check -> Reflect)
+            // The Orchestrator handles the distributed coordination between gRPC Planner and HTTP MCP.
+            var resultJson = await _orchestrator.ProcessIntent(request.Intent, ct);
 
-            var grpcResponse = await _plannerClient.CreatePlanAsync(
-                grpcRequest,
-                cancellationToken: ct);
-
-            if (!grpcResponse.Success)
-            {
-                _logger.LogWarning("Plan creation failed: {Error}", grpcResponse.ErrorMessage);
-
-                return StatusCode(
-                    StatusCodes.Status500InternalServerError,
-                    new ErrorResponse
-                    {
-                        Error = "Plan creation failed",
-                        Details = new List<string> { grpcResponse.ErrorMessage }
-                    });
-            }
-
-            // Convert gRPC response to REST DTO
-            var response = new PlanResponseDto
-            {
-                Goal = grpcResponse.Goal,
-                Analysis = grpcResponse.Analysis,
-                Steps = grpcResponse.Steps.Select(s => new PlanStepDto
-                {
-                    Order = s.Order,
-                    Action = s.Action,
-                    Tool = s.Tool,
-                    Arguments = ParseArguments(s.ArgumentsJson)
-                }).ToList()
-            };
-
-            _logger.LogInformation(
-                "Plan created successfully - Steps: {Count}",
-                response.Steps.Count);
-
-            return Ok(response);
-        }
-        catch (Grpc.Core.RpcException ex)
-        {
-            _logger.LogError(ex, "gRPC error while creating plan");
-
-            return StatusCode(
-                StatusCodes.Status503ServiceUnavailable,
-                new ErrorResponse
-                {
-                    Error = "Planner service unavailable",
-                    Details = new List<string> { ex.Status.Detail }
-                });
+            // Return raw JSON because the Orchestrator returns a serialized string 
+            // containing dynamic tool outputs.
+            return Content(resultJson, "application/json");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error creating plan");
-
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                new ErrorResponse
-                {
-                    Error = "Internal server error",
-                    Details = new List<string> { ex.Message }
-                });
+            _logger.LogError(ex, "Orchestration failure");
+            return StatusCode(500, new { Error = ex.Message, StackTrace = ex.StackTrace });
         }
     }
 
     /// <summary>
-    /// Health check endpoint
+    /// Simple health check to verify API availability.
     /// </summary>
     [HttpGet("health")]
-    [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> HealthCheck(CancellationToken ct)
+    public IActionResult HealthCheck()
     {
-        try
-        {
-            var response = await _plannerClient.HealthCheckAsync(
-                new HealthCheckRequest(),
-                cancellationToken: ct);
-
-            return Ok(new HealthResponse
-            {
-                Status = response.Status.ToString(),
-                Message = response.Message,
-                Timestamp = DateTime.UtcNow
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Health check failed");
-
-            return StatusCode(
-                StatusCodes.Status503ServiceUnavailable,
-                new HealthResponse
-                {
-                    Status = "Unhealthy",
-                    Message = ex.Message,
-                    Timestamp = DateTime.UtcNow
-                });
-        }
-    }
-
-    private Dictionary<string, object>? ParseArguments(string argumentsJson)
-    {
-        if (string.IsNullOrWhiteSpace(argumentsJson) || argumentsJson == "{}")
-        {
-            return null;
-        }
-
-        try
-        {
-            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(argumentsJson);
-        }
-        catch
-        {
-            return null;
-        }
+        return Ok(new { Status = "Healthy", Timestamp = DateTime.UtcNow });
     }
 }
 
@@ -2929,34 +3123,6 @@ public class CreatePlanRequest
     [Required]
     [MinLength(1)]
     public string Intent { get; set; } = string.Empty;
-}
-
-public class PlanResponseDto
-{
-    public string Goal { get; set; } = string.Empty;
-    public string Analysis { get; set; } = string.Empty;
-    public List<PlanStepDto> Steps { get; set; } = new();
-}
-
-public class PlanStepDto
-{
-    public int Order { get; set; }
-    public string Action { get; set; } = string.Empty;
-    public string Tool { get; set; } = string.Empty;
-    public Dictionary<string, object>? Arguments { get; set; }
-}
-
-public class ErrorResponse
-{
-    public string Error { get; set; } = string.Empty;
-    public List<string> Details { get; set; } = new();
-}
-
-public class HealthResponse
-{
-    public string Status { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public DateTime Timestamp { get; set; }
 }
 
 ------------------------------------------------------------------------------
@@ -2992,6 +3158,70 @@ FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Properties\launchSe
     }
   },
   "$schema": "https://json.schemastore.org/launchsettings.json"
+}
+
+------------------------------------------------------------------------------
+FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Services\GrpcPlannerGateway.cs
+------------------------------------------------------------------------------
+using ProjectName.Core.Interfaces;
+using ProjectName.PlanerService; // Namespace from the gRPC Protos
+using System.Text.Json;
+
+namespace ProjectName.OrchestrationApi.Services;
+
+public class GrpcPlannerGateway : IPlanner
+{
+    private readonly Planner.PlannerClient _grpcClient;
+    private readonly ILogger<GrpcPlannerGateway> _logger;
+
+    public GrpcPlannerGateway(Planner.PlannerClient grpcClient, ILogger<GrpcPlannerGateway> logger)
+    {
+        _grpcClient = grpcClient;
+        _logger = logger;
+    }
+
+    public async Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Forwarding plan request to gRPC service...");
+
+        var request = new PlanRequest { Intent = intent };
+
+        var response = await _grpcClient.CreatePlanAsync(request, cancellationToken: ct);
+
+        if (!response.Success)
+        {
+            throw new Exception($"Planner service failed: {response.ErrorMessage}");
+        }
+
+        var steps = response.Steps.Select(s => new PlanStep(
+            s.Order,
+            s.Action,
+            s.Tool,
+            s.ArgumentsJson
+        )).ToList();
+
+        return new PlanResult(response.Goal, steps, response.Analysis);
+    }
+
+    public async Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Forwarding validation request to gRPC service...");
+
+        var request = new ValidationRequest
+        {
+            Intent = intent,
+            ExecutionLog = executionLog
+        };
+
+        var response = await _grpcClient.ValidateOutcomeAsync(request, cancellationToken: ct);
+
+        if (!response.Success)
+        {
+            throw new Exception($"Validation failed: {response.ErrorMessage}");
+        }
+
+        return response.ValidationJson;
+    }
 }
 
 ------------------------------------------------------------------------------
@@ -3062,12 +3292,19 @@ ENTRYPOINT ["dotnet", "ProjectName.OrchestrationApi.dll"]
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\Program.cs
 ------------------------------------------------------------------------------
-
 using Microsoft.OpenApi;
+using ProjectName.Application;          // For CognitiveOrchestrator
+using ProjectName.Core.Entities;        // For AgentIdentity
+using ProjectName.Core.Interfaces;      // For IPlanner, ICognitiveTrail
+using ProjectName.Infrastructure.Data;
+using ProjectName.Infrastructure.MCP;        // For McpClientConfiguration
+using ProjectName.Infrastructure.Services;   // For InMemoryCognitiveTrail
+using ProjectName.OrchestrationApi.Services; // For GrpcPlannerGateway
 using ProjectName.PlanerService;
 using ProjectName.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddNpgsqlDbContext<CognitiveDbContext>("cognitivedb");
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -3077,23 +3314,19 @@ builder.Services.AddSwaggerGen(options =>
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "PMCR-O Orchestration API",
-        Version = "v1",
-        Description = "REST API Gateway for the PMCR-O Agent Framework"
+        Version = "v1"
     });
 });
 
-// Add gRPC client for Planner service
+// 1. REGISTER gRPC CLIENT (Connects to PlannerService)
 builder.Services.AddGrpcClient<Planner.PlannerClient>(options =>
 {
-    // Service discovery through Aspire
     var plannerUrl = builder.Configuration.GetConnectionString("planner-service")
         ?? "https://localhost:7035";
-
     options.Address = new Uri(plannerUrl);
 })
 .ConfigurePrimaryHttpMessageHandler(() =>
 {
-    // For development - accept self-signed certificates
     var handler = new HttpClientHandler();
     if (builder.Environment.IsDevelopment())
     {
@@ -3101,45 +3334,59 @@ builder.Services.AddGrpcClient<Planner.PlannerClient>(options =>
             HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
     }
     return handler;
-});
-
-// Add CORS for development
-if (builder.Environment.IsDevelopment())
+})
+// !!! NEW: OVERRIDE RESILIENCE FOR AI WORKLOADS !!!
+.AddStandardResilienceHandler(options =>
 {
-    builder.Services.AddCors(options =>
-    {
-        options.AddDefaultPolicy(policy =>
-        {
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        });
-    });
-}
+    // Give the AI 5 minutes to think before giving up
+    options.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(5);
+    options.AttemptTimeout.Timeout = TimeSpan.FromMinutes(5);
 
-// Add Aspire service defaults
+    // Adjust Circuit Breaker to be patient
+    options.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(10);
+});
+// 2. REGISTER MCP CLIENT (Connects to McpServer)
+// This extension method (from Infrastructure) sets up HttpClient for IMcpToolExecutor
+builder.Services.AddMcpClient(builder.Configuration);
+
+// 3. REGISTER CORE DEPENDENCIES
+// The "Brain" Proxy
+builder.Services.AddScoped<IPlanner, GrpcPlannerGateway>();
+builder.Services.AddScoped<ICognitiveTrail, PersistentCognitiveTrail>();
+
+// The "Memory"
+builder.Services.AddSingleton<ICognitiveTrail, InMemoryCognitiveTrail>();
+
+// The "Ego"
+builder.Services.AddSingleton(new AgentIdentity("Orchestrator", "Executive", "PMCR-O"));
+
+// 4. REGISTER THE ORCHESTRATOR
+builder.Services.AddScoped<CognitiveOrchestrator>();
+
+// Add Aspire defaults
 builder.AddServiceDefaults();
 
 var app = builder.Build();
-
-// Configure the HTTP request pipeline
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<CognitiveDbContext>();
+    db.Database.EnsureCreated();
+}
+// ... rest of the pipeline (Swagger, HTTPS, MapControllers, etc.) ...
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("/swagger/v1/swagger.json", "PMCR-O API v1");
-        options.RoutePrefix = string.Empty; // Swagger at root
+        options.RoutePrefix = string.Empty;
     });
-
     app.UseCors();
 }
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
-
-// Map default endpoints (health checks from Aspire)
 app.MapDefaultEndpoints();
 
 app.Run();
@@ -3163,6 +3410,9 @@ FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\ProjectName.Orchest
 	</ItemGroup>
 
 	<ItemGroup>
+
+		<PackageReference Include="Aspire.Npgsql.EntityFrameworkCore.PostgreSQL" />
+
 		<PackageReference Include="Grpc.AspNetCore" />
 		<PackageReference Include="Grpc.Tools" PrivateAssets="All" />
 		<PackageReference Include="Google.Protobuf" />
@@ -3174,6 +3424,8 @@ FILE: T:\agents\ProjectName\src\ProjectName.OrchestrationApi\ProjectName.Orchest
 	</ItemGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\ProjectName.Application\ProjectName.Application.csproj" />
+		<ProjectReference Include="..\ProjectName.Infrastructure\ProjectName.Infrastructure.csproj" />
 		<ProjectReference Include="..\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj" />
 	</ItemGroup>
 
@@ -3241,15 +3493,10 @@ using System.Diagnostics;
 
 namespace ProjectName.PlanerService.Services;
 
-/// <summary>
-/// gRPC service implementing the Planner interface
-/// Hosts the PlannerAgent and exposes it via gRPC
-/// </summary>
 public class PlannerGrpcService : Planner.PlannerBase
 {
     private readonly IPlanner _planner;
     private readonly ILogger<PlannerGrpcService> _logger;
-    private static readonly string AgentVersion = "1.0.0";
 
     public PlannerGrpcService(IPlanner planner, ILogger<PlannerGrpcService> logger)
     {
@@ -3258,34 +3505,22 @@ public class PlannerGrpcService : Planner.PlannerBase
     }
 
     public override async Task<PlanResponse> CreatePlan(
-        PlanRequest request, 
+        PlanRequest request,
         ServerCallContext context)
     {
         var sw = Stopwatch.StartNew();
-        _logger.LogInformation(
-            "CreatePlan called - Intent: {Intent}", 
-            request.Intent);
+        _logger.LogInformation("CreatePlan called - Intent: {Intent}", request.Intent);
 
         try
         {
-            // Validate request
             if (string.IsNullOrWhiteSpace(request.Intent))
             {
-                return new PlanResponse
-                {
-                    Success = false,
-                    ErrorMessage = "Intent cannot be empty"
-                };
+                return new PlanResponse { Success = false, ErrorMessage = "Intent cannot be empty" };
             }
 
-            // Call the PlannerAgent
-            var plan = await _planner.CreatePlanAsync(
-                request.Intent, 
-                context.CancellationToken);
-
+            var plan = await _planner.CreatePlanAsync(request.Intent, context.CancellationToken);
             sw.Stop();
 
-            // Build successful response
             var response = new PlanResponse
             {
                 Success = true,
@@ -3293,7 +3528,6 @@ public class PlannerGrpcService : Planner.PlannerBase
                 Analysis = plan.Analysis
             };
 
-            // Convert PlanSteps to gRPC messages
             foreach (var step in plan.Steps)
             {
                 response.Steps.Add(new PlanStepMessage
@@ -3305,27 +3539,33 @@ public class PlannerGrpcService : Planner.PlannerBase
                 });
             }
 
-            _logger.LogInformation(
-                "Plan created successfully - Steps: {StepCount}, Duration: {Duration}ms",
-                response.Steps.Count,
-                sw.ElapsedMilliseconds);
-
             return response;
-        }
-        catch (RpcException)
-        {
-            // Re-throw gRPC exceptions
-            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating plan for intent: {Intent}", request.Intent);
+            _logger.LogError(ex, "Error creating plan");
+            return new PlanResponse { Success = false, ErrorMessage = ex.Message };
+        }
+    }
 
-            return new PlanResponse
+    public override async Task<ValidationResponse> ValidateOutcome(
+        ValidationRequest request,
+        ServerCallContext context)
+    {
+        try
+        {
+            var result = await _planner.ValidateOutcomeAsync(request.Intent, request.ExecutionLog, context.CancellationToken);
+
+            return new ValidationResponse
             {
-                Success = false,
-                ErrorMessage = $"Internal error: {ex.Message}"
+                Success = true,
+                ValidationJson = result
             };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating outcome");
+            return new ValidationResponse { Success = false, ErrorMessage = ex.Message };
         }
     }
 
@@ -3333,26 +3573,11 @@ public class PlannerGrpcService : Planner.PlannerBase
         HealthCheckRequest request,
         ServerCallContext context)
     {
-        _logger.LogDebug("Health check requested");
-
-        try
+        return Task.FromResult(new HealthCheckResponse
         {
-            return Task.FromResult(new HealthCheckResponse
-            {
-                Status = HealthCheckResponse.Types.ServingStatus.Serving,
-                Message = "Planner service is healthy"
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Health check failed");
-
-            return Task.FromResult(new HealthCheckResponse
-            {
-                Status = HealthCheckResponse.Types.ServingStatus.NotServing,
-                Message = $"Service unhealthy: {ex.Message}"
-            });
-        }
+            Status = HealthCheckResponse.Types.ServingStatus.Serving,
+            Message = "Planner service is healthy"
+        });
     }
 }
 
@@ -3384,9 +3609,12 @@ FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\appsettings.json
     "EndpointDefaults": {
       "Protocols": "Http2"
     }
+  },
+  "AgentSettings": {
+    "OllamaEndpoint": "http://localhost:11434",
+    "ModelName": "qwen2.5-coder:latest"
   }
 }
-
 
 ------------------------------------------------------------------------------
 FILE: T:\agents\ProjectName\src\ProjectName.PlanerService\Dockerfile
@@ -3521,7 +3749,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;

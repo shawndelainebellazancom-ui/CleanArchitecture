@@ -21,17 +21,22 @@ builder.Services.AddSwaggerGen(options =>
 
 // Register PlaywrightManager as singleton (browser lifecycle)
 builder.Services.AddSingleton<PlaywrightManager>();
+// ... previous code ...
 
-// Register MCP Server Service
+// Register MCP Server Service (Keep as Singleton)
 builder.Services.AddSingleton<McpServerService>();
 
-// Register all MCP tools
-builder.Services.AddScoped<BrowserNavigateTool>();
-builder.Services.AddScoped<BrowserClickTool>();
-builder.Services.AddScoped<BrowserTypeTool>();
-builder.Services.AddScoped<BrowserScreenshotTool>();
-builder.Services.AddScoped<BrowserExtractTool>();
-builder.Services.AddScoped<BrowserEvaluateTool>();
+// Register all MCP tools as SINGLETONS (Not Scoped)
+// They depend on PlaywrightManager (Singleton) and ILogger (Singleton), so this is safe.
+builder.Services.AddSingleton<BrowserNavigateTool>();
+builder.Services.AddSingleton<BrowserClickTool>();
+builder.Services.AddSingleton<BrowserTypeTool>();
+builder.Services.AddSingleton<BrowserScreenshotTool>();
+builder.Services.AddSingleton<BrowserExtractTool>();
+builder.Services.AddSingleton<BrowserEvaluateTool>();
+
+// Add Aspire service defaults
+// ... rest of code ...
 
 // Add Aspire service defaults (telemetry, health checks)
 builder.AddServiceDefaults();

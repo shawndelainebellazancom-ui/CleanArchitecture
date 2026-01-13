@@ -26,4 +26,9 @@ public interface IPlanner
     /// Creates a structured plan from user intent using LLM reasoning
     /// </summary>
     Task<PlanResult> CreatePlanAsync(string intent, CancellationToken ct = default);
+
+    /// <summary>
+    /// Validates the execution results against the original intent (Phase C)
+    /// </summary>
+    Task<string> ValidateOutcomeAsync(string intent, string executionLog, CancellationToken ct = default);
 }
