@@ -4,9 +4,13 @@ option csharp_namespace = "ProjectName.PlanerService";
 
 package planner;
 
-// The Planner service for PMCR-O Phase P (Plan)
+// The Planner service definition
 service Planner {
+  // Creates an execution plan from user intent
   rpc CreatePlan (PlanRequest) returns (PlanResponse);
+  
+  // Health check endpoint
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
 }
 
 // Request message for CreatePlan
@@ -29,4 +33,20 @@ message PlanStepMessage {
   string action = 2;
   string tool = 3;
   string arguments_json = 4;
+}
+
+// Health check request
+message HealthCheckRequest {
+}
+
+// Health check response
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;
+    NOT_SERVING = 2;
+  }
+  
+  ServingStatus status = 1;
+  string message = 2;
 }

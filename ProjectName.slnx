@@ -3,6 +3,7 @@
   <Project Path="src/ProjectName.Application/ProjectName.Application.csproj" Id="feb7fcad-7dd0-4e3d-bf84-eabd3a7d177a" />
   <Project Path="src/ProjectName.Core/ProjectName.Core.csproj" Id="21798307-0d04-45cb-aaa8-08de0791d3ed" />
   <Project Path="src/ProjectName.Infrastructure/ProjectName.Infrastructure.csproj" Id="03cc7d4b-bad6-4cd8-a754-8265e3a77349" />
+  <Project Path="src/ProjectName.McpServer/ProjectName.McpServer.csproj" />
   <Project Path="src/ProjectName.OrchestrationApi/ProjectName.OrchestrationApi.csproj" Id="216b62a9-e46f-477d-a319-5a8b9efe2b71" />
   <Project Path="src/ProjectName.PlanerService/ProjectName.PlanerService.csproj" Id="da59b0de-2622-4391-ab2f-7bc4116f18aa" />
   <Project Path="src/ProjectName.ServiceDefaults/ProjectName.ServiceDefaults.csproj" Id="606e072b-997c-4cd9-92fd-cd7bea94b7ff" />

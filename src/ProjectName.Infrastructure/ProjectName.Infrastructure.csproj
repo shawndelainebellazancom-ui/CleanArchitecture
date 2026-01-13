@@ -7,8 +7,18 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- MCP Protocol -->
 		<PackageReference Include="ModelContextProtocol" />
+		<PackageReference Include="ModelContextProtocol.Core" />
+
+		<!-- AI and Agent Framework -->
 		<PackageReference Include="Microsoft.Extensions.AI" />
+		<PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+		<PackageReference Include="Microsoft.Agents.AI" />
+		<PackageReference Include="OllamaSharp" />
+
+		<!-- HTTP Client Extensions - REQUIRED for AddHttpClient -->
+		<PackageReference Include="Microsoft.Extensions.Http" />
 	</ItemGroup>
 
 	<ItemGroup>

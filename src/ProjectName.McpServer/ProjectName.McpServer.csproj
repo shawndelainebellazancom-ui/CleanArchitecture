@@ -4,18 +4,20 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<UserSecretsId>96d01d32-0ed9-4755-a32e-d303666266ce</UserSecretsId>
-		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-		<DockerfileContext>..\..</DockerfileContext>
+		<UserSecretsId>mcp-server-$(MSBuildProjectName)</UserSecretsId>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<Protobuf Include="Protos\planner.proto" GrpcServices="Server" />
-	</ItemGroup>
+		<!-- MCP Protocol Support -->
+		<PackageReference Include="ModelContextProtocol" />
+		<PackageReference Include="ModelContextProtocol.Core" />
 
-	<ItemGroup>
-		<PackageReference Include="Grpc.AspNetCore" />
-		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
+		<!-- Playwright for Browser Automation -->
+		<PackageReference Include="Microsoft.Playwright" />
+
+		<!-- ASP.NET Core -->
+		<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+		<PackageReference Include="Swashbuckle.AspNetCore" />
 	</ItemGroup>
 
 	<ItemGroup>

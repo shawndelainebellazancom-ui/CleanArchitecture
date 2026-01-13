@@ -14,13 +14,18 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- NO VERSION ATTRIBUTES - All versions from Directory.Packages.props -->
 		<PackageReference Include="Grpc.AspNetCore" />
 		<PackageReference Include="Grpc.Tools" PrivateAssets="All" />
 		<PackageReference Include="Google.Protobuf" />
+		<PackageReference Include="Grpc.Net.Client" />
+		<PackageReference Include="Grpc.Net.ClientFactory" />
 		<PackageReference Include="Microsoft.AspNetCore.OpenApi" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
 		<PackageReference Include="Swashbuckle.AspNetCore" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\ProjectName.ServiceDefaults\ProjectName.ServiceDefaults.csproj" />
 	</ItemGroup>
 
 </Project>
