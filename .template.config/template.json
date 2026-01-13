@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Shawn Delaine Bellazan / Tooensure LLC",
+  "identity": "Tooensure.Agent.GodSeed",
+  "name": "Sovereign Agent Factory (PMCR-O)",
+  "shortName": "agent-seed",
+  "sourceName": "ProjectName",
+  "preferNameDirectory": true,
+  "symbols": {
+    "ProjectName": {
+      "type": "parameter",
+      "replaces": "ProjectName",
+      "description": "The explicit name of the Agent Project."
+    }
+  }
+}

@@ -1,0 +1,5 @@
+<Project>
+	<Target Name="InitializeAgentSubstrates" AfterTargets="Build">
+		<MakeDir Directories="$(SolutionDir)memory_trail;$(SolutionDir)artifacts" />
+	</Target>
+</Project>

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "required": [ "Goal", "Steps" ],
+  "properties": {
+    "Goal": { "type": "string" },
+    "Steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [ "Order", "Action", "Tool", "ArgumentsJson" ],
+        "properties": {
+          "Order": { "type": "integer" },
+          "Action": { "type": "string" },
+          "Tool": { "type": "string" },
+          "ArgumentsJson": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option csharp_namespace = "ProjectName.PlanerService";
+
+package planner;
+
+// The Planner service for PMCR-O Phase P (Plan)
+service Planner {
+  rpc CreatePlan (PlanRequest) returns (PlanResponse);
+}
+
+// Request message for CreatePlan
+message PlanRequest {
+  string intent = 1;
+}
+
+// Response message for CreatePlan
+message PlanResponse {
+  bool success = 1;
+  string goal = 2;
+  string analysis = 3;
+  repeated PlanStepMessage steps = 4;
+  string error_message = 5;
+}
+
+// Individual plan step
+message PlanStepMessage {
+  int32 order = 1;
+  string action = 2;
+  string tool = 3;
+  string arguments_json = 4;
+}
